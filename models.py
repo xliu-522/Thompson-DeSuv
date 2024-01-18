@@ -298,7 +298,7 @@ class GoogLeNet(nn.Module):
 class CDFNet(nn.Module):
     """Solve conditional ODE. Single output dim."""
     def __init__(self, hidden_dim=32, output_dim=1,
-                 nonlinearity=nn.ReLU,
+                 nonlinearity=nn.Tanh,
                  device="cpu", n=15, lr=1e-3):
         super().__init__()
 
