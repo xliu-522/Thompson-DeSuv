@@ -6,19 +6,20 @@
         "batch_size": 128,
         "num_channels": 3,
         "train_test_split_perc": 0.8,
-        "image_size": 32
+        "sample_size": 200,
+        "dimension": 50
         },
     "sampler": {
         "sampler_options": ["sasgld", "sacsgld", "sgld", "csgld"],
-        "sampler": "sacsgld",
+        "sampler": "sasgld",
         "update_rate": 0.001,
         "rho_0": 10000,
         "rho_1": 1,
         "u": 50
     },
     "model": {
-        "model_options": ["LeNet5", "AlexNet", "VGG6", "ResNet18", "GoogLeNet", "CDFNet"],
-        "model_name": "CDFNet"
+        "model_options": ["LeNet5", "AlexNet", "VGG6", "ResNet18", "GoogLeNet", "CDFNet", "LogisticNet"],
+        "model_name": "LogisticNet"
     }, 
     "training":{
         "epoches": 10,
