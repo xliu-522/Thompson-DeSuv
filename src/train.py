@@ -15,10 +15,13 @@ class mcmc_train_test(object):
         self.config = config
         self.device = device
         self.model = model
+        self.X = X,
+        self.y = y,
+        self.theta = theta
+        self.sample_size =  config["data"]["sample_size"]
+        self.dimension =  config["data"]["dimension"]
         self.model_name = config['model']['model_name']
         self.sampler_name = self.config["sampler"]["sampler"]
-        self.sample_size = len(X)
-        self.dimension = len(theta)
         self.update_rate = config["sampler"]["update_rate"]
         self.total_par = config["model"]["total_par"]
         self.lr0 = config["training"]["gamma"]
@@ -34,43 +37,43 @@ class mcmc_train_test(object):
             start_time = time.perf_counter()
             for t in range(self.epoches):
                 print(f"Epoch {t+1}\n-------------------------------")
-                for batch, (X, y) in enumerate(self.train_dataloader):
-                    X = X.to(self.device)
-                    y = y.to(self.device)
-                    self.model = self.sampler.sparsify_model_params(self.model)
-                    pred = self.model(X)
-                    loss = self.loss_fn(pred, y)
-                    loss.backward()
-                    self.model = self.sampler.update_params(self.model, self.lr0)
-                    self.sampler.select_CoordSet(self.model)
+            #     for batch, (X, y) in enumerate(self.train_dataloader):
+            #         X = X.to(self.device)
+            #         y = y.to(self.device)
+                self.model = self.sampler.sparsify_model_params(self.model)
+                pred = self.model(X)
+            #         loss = self.loss_fn(pred, y)
+            #         loss.backward()
+            #         self.model = self.sampler.update_params(self.model, self.lr0)
+            #         self.sampler.select_CoordSet(self.model)
                     
-                    # calculate 2nd gradient calculate
-                    pred = self.model(X)
-                    loss = self.loss_fn(pred, y)
-                    loss.backward()
-                    self.spar = self.sampler.update_sparsity(self.model)
-                    self.model = self.sampler.zero_grad(self.model)
-                    # self.sampler.select_CoordSet(self.model)
-                    # self.model = self.sampler.sparsify_model_params(self.model)
-                    # pred = self.model(X)
-                    # loss = self.loss_fn(pred, y)
-                    # loss.backward()
-                    # self.model = self.sampler.update_params(self.model, self.lr0)
-                    # self.spar = self.sampler.update_sparsity(self.model)
-                    # self.model = self.sampler.zero_grad(self.model)
-                    if iters % 100 == 0:
-                        self.test_it()
-                    if iters % 10000 == 0:
-                        print('save!')
-                        self.model.cpu()
-                        torch.save(self.model.state_dict(),f'{self.res_dir}/model_{iters}.pt')
-                        self.model.to(self.device)
-                    iters+=1
-            end_time = time.perf_counter()
-            running_time = end_time - start_time
-            print(f"Running time: {running_time} seconds")
-            with open(f"{self.res_dir}/running_time.txt", "w") as file:
-                file.write(f"Running time: {running_time} seconds")
+            #         # calculate 2nd gradient calculate
+            #         pred = self.model(X)
+            #         loss = self.loss_fn(pred, y)
+            #         loss.backward()
+            #         self.spar = self.sampler.update_sparsity(self.model)
+            #         self.model = self.sampler.zero_grad(self.model)
+            #         # self.sampler.select_CoordSet(self.model)
+            #         # self.model = self.sampler.sparsify_model_params(self.model)
+            #         # pred = self.model(X)
+            #         # loss = self.loss_fn(pred, y)
+            #         # loss.backward()
+            #         # self.model = self.sampler.update_params(self.model, self.lr0)
+            #         # self.spar = self.sampler.update_sparsity(self.model)
+            #         # self.model = self.sampler.zero_grad(self.model)
+            #         if iters % 100 == 0:
+            #             self.test_it()
+            #         if iters % 10000 == 0:
+            #             print('save!')
+            #             self.model.cpu()
+            #             torch.save(self.model.state_dict(),f'{self.res_dir}/model_{iters}.pt')
+            #             self.model.to(self.device)
+            #         iters+=1
+            # end_time = time.perf_counter()
+            # running_time = end_time - start_time
+            # print(f"Running time: {running_time} seconds")
+            # with open(f"{self.res_dir}/running_time.txt", "w") as file:
+            #     file.write(f"Running time: {running_time} seconds")
             
                     
         
@@ -198,7 +201,7 @@ class mcmc_train_test(object):
             print(f"Running time: {running_time} seconds")
             with open(f"{self.res_dir}/running_time.txt", "w") as file:
                 file.write(f"Running time: {running_time} seconds")
-        return self.Loss, self.Acc, self.Sparsity
+        #return self.Loss, self.Acc, self.Sparsity
                     
                 
 
