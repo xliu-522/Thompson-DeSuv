@@ -47,9 +47,10 @@ def main():
         y[y < 0.5] = 0
         y[y >= 0.5] = 1  
         y = y.flatten()
+        X = torch.tensor(X, dtype=torch.double)
         return X, y, W
 
-    N, D = 200, 50
+    N, D = config["data"]["sample_size"], config["data"]["dimension"]
     X, y, W = build_toy_dataset(N, D)
     #plt.scatter(np.arange(W.size), W.flatten())
     
@@ -65,7 +66,9 @@ def main():
         print(f"Model {model_name} not found.")
 
     # Initialize the neural network with a random dummy batch (Lazy)
-    model = model.to(device)
+    model = model.to(device, torch.double)
+
+    print(model(X))
     
     # Create a random dummy batch with the specified shape for Alexnet
     if model_name == "AlexNet":
@@ -92,10 +95,10 @@ def main():
 
 
 
-    trainer = mcmc_train_test(device=device, res_dir=res_dir, X=X, y=y, theta=W, config=config, model=model)
+    # trainer = mcmc_train_test(device=device, res_dir=res_dir, X=X, y=y, theta=W, config=config, model=model)
     
-    # print("**** Start training ****")
-    # loss, acc, sparsity= trainer.train_it()
+    # # print("**** Start training ****")
+    # trainer.train_it()
     
     # np.save(f'{res_dir}/loss.npy',loss)
     # np.save(f'{res_dir}/accuracy.npy', acc)
