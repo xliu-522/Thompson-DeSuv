@@ -295,21 +295,25 @@ class GoogLeNet(nn.Module):
         out = self.linear(out)
         return out
 
+class LogisticNet(nn.Module):
+    def __init__(self, input_dim = 50):
+        super(LogisticNet, self).__init__()
+        self.linear = nn.Linear(input_dim, 1)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = self.sigmoid(x)
+        return x
+
 class CDFNet(nn.Module):
     """Solve conditional ODE. Single output dim."""
     def __init__(self, hidden_dim=32, output_dim=1,
-                 nonlinearity=nn.ReLU,
+                 nonlinearity=nn.Tanh,
                  device="cpu", n=15, lr=1e-3):
         super().__init__()
 
         self.output_dim = output_dim
-
-        # if device == "gpu":
-        #     self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        #     print(f"CondODENet: {device} specified, {self.device} used")
-        # else:
-        #     self.device = torch.device("cpu")
-        #     print(f"CondODENet: {device} specified, {self.device} used")
 
         self.dudt = nn.Sequential(
             nn.Linear(1, hidden_dim),

@@ -5,9 +5,6 @@ from scipy.special import expit, logit
 from torch import nn
 #from torch.func import functional_call, grad
 from torch.utils.data import DataLoader
-from torchvision import datasets
-from torchvision.transforms import ToTensor
-from torchvision import transforms
 from types import SimpleNamespace
 
 class OptimizerTemplate:
