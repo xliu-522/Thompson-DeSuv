@@ -19,7 +19,8 @@
     },
     "model": {
         "model_options": ["LeNet5", "AlexNet", "VGG6", "ResNet18", "GoogLeNet", "CDFNet", "LogisticNet"],
-        "model_name": "LogisticNet"
+        "model_name1": "LogisticNet",
+        "model_name2": "CDFNet"
     }, 
     "training":{
         "epoches": 10,
