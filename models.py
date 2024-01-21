@@ -303,7 +303,7 @@ class LogisticNet(nn.Module):
 
     def forward(self, x):
         x = self.linear(x)
-        x = self.sigmoid(x)
+        #x = self.sigmoid(x)
         return x
 
 class CDFNet(nn.Module):
