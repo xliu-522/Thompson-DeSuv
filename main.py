@@ -56,42 +56,48 @@ def main():
     
 
     print("**** Load Model ****")
-    model_name = config["model"]["model_name"]
-    model_reference = getattr(models, model_name)
-    if model_reference is not None and callable(model_reference):
+    model_name1 = config["model"]["model_name1"]
+    model_name2 = config["model"]["model_name2"]
+    model_reference1 = getattr(models, model_name1)
+    model_reference2 = getattr(models, model_name2)
+    if model_reference1 is not None and callable(model_reference1):
         # Create an instance of the class
-        model = model_reference()
-        print(f"Found model {model_name}. ")
+        model1 = model_reference1()
+        print(f"Found model {model_name1}. ")
     else:
-        print(f"Model {model_name} not found.")
+        print(f"Model {model_name1} not found.")
+
+    if model_reference2 is not None and callable(model_reference2):
+        # Create an instance of the class
+        model2 = model_reference2()
+        print(f"Found model {model_name2}. ")
+    else:
+        print(f"Model {model_name2} not found.")
 
     # Initialize the neural network with a random dummy batch (Lazy)
-    model = model.to(device, torch.double)
+    model_logistic = model1.to(device, torch.float32)
+    model_cdf = model2.to(device, torch.float32)
 
-    print(model(X))
-    
-    # Create a random dummy batch with the specified shape for Alexnet
-    if model_name == "AlexNet":
-        dummy_batch = torch.randn(config["data"]["batch_size"], config["data"]["num_channels"], config["data"]["image_size"], config["data"]["image_size"]).to(device)
-        model(dummy_batch)
+    config["model"]["logistic_total_par"] = sum(P.numel() for P in model_logistic.parameters() if P.requires_grad)
+    print(config["model"]["logistic_total_par"])
 
-    config["model"]["total_par"] = sum(P.numel() for P in model.parameters() if P.requires_grad)
-    print(config["model"]["total_par"])
+    config["model"]["cdf_total_par"] = sum(P.numel() for P in model_cdf.parameters() if P.requires_grad)
+    print(config["model"]["cdf_total_par"])
     
     
-    print("**** Create directory ****")
-    # Get the current date and time
-    current_time = datetime.now()
+    # print("**** Create directory ****")
+    # # Get the current date and time
+    # current_time = datetime.now()
 
-    # Format the current time as a string (adjust the format as needed)
-    time_string = current_time.strftime("%Y-%m-%d_%H-%M-%S")
+    # # Format the current time as a string (adjust the format as needed)
+    # time_string = current_time.strftime("%Y-%m-%d_%H-%M-%S")
     
-    res_dir = f'./result/{config["sampler"]["sampler"]}_{config["model"]["model_name"]}_{config["data"]["dataset"]}_{config["training"]["gamma"]}_{config["training"]["epoches"]}_{config["training"]["cycles"]}_{time_string}'
-    if not os.path.exists(res_dir):
-        os.makedirs(res_dir)
-        print(f"Folder '{res_dir}' created.")
-    else:
-        print(f"Folder '{res_dir}' already exists.")
+    # res_dir = f'./result/{config["sampler"]["sampler"]}_{config["model"]["model_name"]}_{config["data"]["dataset"]}_{config["training"]["gamma"]}_{config["training"]["epoches"]}_{config["training"]["cycles"]}_{time_string}'
+    # if not os.path.exists(res_dir):
+    #     os.makedirs(res_dir)
+    #     print(f"Folder '{res_dir}' created.")
+    # else:
+    #     print(f"Folder '{res_dir}' already exists.")
 
 
 
