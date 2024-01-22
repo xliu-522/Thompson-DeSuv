@@ -49,10 +49,10 @@ class mcmc_train_test(object):
                 F_t = self.model_cdf.mapping(torch.tensor(u.astype('float32'))).detach().numpy()
                 f_t = np.exp(-self.model_cdf.forward(torch.tensor(u.astype('floatz32'))).detach().numpy().squeeze())
                 phi_t = u - (1-F_t)/f_t
-                g_t = u + 
-                p_t = min(max(g_t, 0), 10)
+                
+                #p_t = min(max(g_t, 0), 10)
 
-                loss = self.loss_fn(self.)
+                #loss = self.loss_fn(self.)
                  
             #         loss = self.loss_fn(pred, y)
             #         loss.backward()
