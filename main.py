@@ -3,6 +3,7 @@ os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 import argparse
 from scipy.special import expit
 import json
+import math
 import torch
 from torch import nn
 #from src.data import Data
@@ -39,20 +40,23 @@ def main():
         np.random.seed(1234)
         X = np.random.random((N, D))-0.5
         W = np.random.random((D, 1))-0.5
-        b = np.random.normal()
+        b = np.random.normal(0, 1, (N, 1))
         zero_ind = np.arange(D//4, D)
         W[zero_ind, :] = 0
+        V = X.dot(W) + b
         y = expit(X.dot(W)+b)
         #y = binom.rvs(1, y)  
         y[y < 0.5] = 0
         y[y >= 0.5] = 1  
         y = y.flatten()
-        X = torch.tensor(X, dtype=torch.double)
-        return X, y, W
+        # X = torch.tensor(X, dtype=torch.float32)
+        # V = torch.tensor(X, dtype=torch.float32)
+        return X, y, W, V
 
     N, D = config["data"]["sample_size"], config["data"]["dimension"]
-    X, y, W = build_toy_dataset(N, D)
+    X, y, W, V = build_toy_dataset(N, D)
     #plt.scatter(np.arange(W.size), W.flatten())
+    print(math.ceil(max(V)))
     
 
     print("**** Load Model ****")
@@ -102,7 +106,7 @@ def main():
 
 
 
-    #trainer = mcmc_train_test(device=device, X=X, y=y, theta=W, config=config, model_cdf=model_cdf, model_logistic=model_logistic)
+    #trainer = mcmc_train_test(device=device, X=X, y=y, theta=W, V = V, config=config, model_cdf=model_cdf, model_logistic=model_logistic)
     
     # # print("**** Start training ****")
     # trainer.train_it()
