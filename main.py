@@ -85,6 +85,7 @@ def main():
     print(config["model"]["cdf_total_par"])
     
     
+    
     # print("**** Create directory ****")
     # # Get the current date and time
     # current_time = datetime.now()
@@ -101,7 +102,7 @@ def main():
 
 
 
-    # trainer = mcmc_train_test(device=device, res_dir=res_dir, X=X, y=y, theta=W, config=config, model=model)
+    #trainer = mcmc_train_test(device=device, X=X, y=y, theta=W, config=config, model_cdf=model_cdf, model_logistic=model_logistic)
     
     # # print("**** Start training ****")
     # trainer.train_it()
