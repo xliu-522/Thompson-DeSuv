@@ -11,10 +11,11 @@ from src.sampler import SGD, SGLD, SASGLD
 import time
 
 class mcmc_train_test(object):
-    def __init__(self, device, res_dir, X, y, theta, config, model):
+    def __init__(self, device, X, y, theta, config, model_logistic, model_cdf):
         self.config = config
         self.device = device
-        self.model = model
+        self.model_logistic = model_logistic
+        self.model_cdf = model_cdf
         self.X = X,
         self.y = y,
         self.theta = theta
@@ -23,25 +24,36 @@ class mcmc_train_test(object):
         self.model_name = config['model']['model_name']
         self.sampler_name = self.config["sampler"]["sampler"]
         self.update_rate = config["sampler"]["update_rate"]
-        self.total_par = config["model"]["total_par"]
         self.lr0 = config["training"]["gamma"]
-        # self.loss_fn = nn.CrossEntropyLoss()
+        self.loss_fn = nn.BCELoss()
         # self.Loss, self.Sparsity, self.Acc = [], [], []
-        self.res_dir = res_dir
        
     def train_it(self):
         print("training here!")
         if self.sampler_name == "sasgld":
-            self.sampler = SASGLD(device=self.device, config=self.config, model=self.model)
+            self.sampler_logistic = SASGLD(device=self.device, config=self.config, model=self.model_logistic)
+            self.sampler_cdf = SASGLD(device=self.device, config=self.config, model=self.model_cdf)
             iters = 1
             start_time = time.perf_counter()
-            for t in range(self.epoches):
+            for t in range(self.sample_size):
                 print(f"Epoch {t+1}\n-------------------------------")
             #     for batch, (X, y) in enumerate(self.train_dataloader):
             #         X = X.to(self.device)
             #         y = y.to(self.device)
-                self.model = self.sampler.sparsify_model_params(self.model)
-                pred = self.model(X)
+                
+                # update theta using logistic loss 
+                self.model_logistic = self.sampler_logistic.sparsify_model_params(self.model_logistic)
+                # self.model_cdf = self.sampler_logistic.sparsify_model_params(self.model_cdf) 
+                x_t = X[t]
+                u = self.model_logistic(self.x_t)
+                F_t = self.model_cdf.mapping(torch.tensor(u.astype('float32'))).detach().numpy()
+                f_t = np.exp(-self.model_cdf.forward(torch.tensor(u.astype('floatz32'))).detach().numpy().squeeze())
+                phi_t = u - (1-F_t)/f_t
+                g_t = u + 
+                p_t = min(max(g_t, 0), 10)
+
+                loss = self.loss_fn(self.)
+                 
             #         loss = self.loss_fn(pred, y)
             #         loss.backward()
             #         self.model = self.sampler.update_params(self.model, self.lr0)
