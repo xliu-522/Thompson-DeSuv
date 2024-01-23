@@ -9,7 +9,6 @@ from torch import nn
 from types import SimpleNamespace
 from src.sampler import SGD, SGLD, SASGLD
 import time
-import math
 
 class mcmc_train_test(object):
     def __init__(self, device, X, y, theta, config, model_logistic, model_cdf):
@@ -19,10 +18,7 @@ class mcmc_train_test(object):
         self.model_cdf = model_cdf
         self.X = X,
         self.y = y,
-        self.V = V
-        self.B = math.ceil(max(self.V))
         self.theta = theta
-        
         self.sample_size =  config["data"]["sample_size"]
         self.dimension =  config["data"]["dimension"]
         self.model_name = config['model']['model_name']
@@ -31,14 +27,6 @@ class mcmc_train_test(object):
         self.lr0 = config["training"]["gamma"]
         self.loss_fn = nn.BCELoss()
         # self.Loss, self.Sparsity, self.Acc = [], [], []
-    def price_approx(self, u_t):
-        """ approximate the optimal price """
-        p_t = 0
-        for tt in range(100):
-            F_t = self.model_cdf.mapping(torch.tensor((p_t - u_t).astype('float32'))).detach().numpy()
-            f_t = np.exp(-self.model_cdf.forward(torch.tensor((p_t - u_t).astype('float32'))).detach().numpy().squeeze())
-            p_t = p_t - 0.01 * (1-F_t) - p_t * f_t
-        return p_t
        
     def train_it(self):
         print("training here!")
@@ -57,14 +45,13 @@ class mcmc_train_test(object):
                 self.model_logistic = self.sampler_logistic.sparsify_model_params(self.model_logistic)
                 # self.model_cdf = self.sampler_logistic.sparsify_model_params(self.model_cdf) 
                 x_t = X[t]
-                u_t = self.model_logistic(self.x_t)
-                p_approx = self.price_approx(u_t)
-                p_t = min(max(p_t, 0), self.B)
-                v_t = V[t]
-                y_t = int(v_t >= p_t)
-                F_t = self.model_cdf.mapping(torch.tensor((p_t - u_t).astype('float32'))).detach().numpy()
-                loss = self.loss_fn(y_t, 1-F_t)
-                loss.backward()
+                u = self.model_logistic(self.x_t)
+                F_t = self.model_cdf.mapping(torch.tensor(u.astype('float32'))).detach().numpy()
+                f_t = np.exp(-self.model_cdf.forward(torch.tensor(u.astype('floatz32'))).detach().numpy().squeeze())
+                phi_t = u - (1-F_t)/f_t
+                
+                #p_t = min(max(g_t, 0), 10)
+
                 #loss = self.loss_fn(self.)
                  
             #         loss = self.loss_fn(pred, y)
