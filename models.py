@@ -341,7 +341,7 @@ class CDFNet(nn.Module):
         tau_ = torch.flatten(tau)[:,None] # Nn x 1. Think of as N n-dim vectors stacked on top of each other
         f_n = self.dudt(tau_).reshape((*tau.shape, self.output_dim)) # N x n x d_out
         pred = t/2 * ((self.w_n[:,:,None] * f_n).sum(dim=1))
-        return torch.tanh(pred).squeeze()
+        return torch.sigmoid(pred).squeeze() # F_0(x)
     
     def forward(self, t):
         F = self.mapping(t)
