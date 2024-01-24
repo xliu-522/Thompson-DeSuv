@@ -4,6 +4,7 @@ import random
 import math
 from scipy.special import expit, logit
 from torch import nn
+from pynverse import inversefunc
 #from torch.func import functional_call, grad
 #from torch.utils.data import DataLoader
 from types import SimpleNamespace
@@ -31,14 +32,14 @@ class mcmc_train_test(object):
         self.lr0 = config["training"]["gamma"]
         self.loss_fn = nn.BCELoss()
         # self.Loss, self.Sparsity, self.Acc = [], [], []
-    def price_approx(self, u_t):
+    def g_approx(self, u_t):
         """ approximate the optimal price """
-        p_t = 0
-        for tt in range(100):
-            F_t = self.model_cdf.mapping(torch.tensor((p_t - u_t).astype('float32'))).detach().numpy()
-            f_t = np.exp(-self.model_cdf.forward(torch.tensor((p_t - u_t).astype('float32'))).detach().numpy().squeeze())
-            p_t = p_t - 0.01 * (1-F_t) - p_t * f_t
-        return p_t
+        F_t = self.model_cdf.mapping(u_t).detach().numpy()
+        f_t = np.exp(-self.model_cdf.forward(u_t).detach().numpy().squeeze())
+        g_Wt = self.model_cdf.dudt(u_t).detach().numpy()
+        phi_t = u_t - 1/(g_Wt * (1+(1/(1+torch.exp(-u_t)))))
+
+        return phi_t
        
     def train_it(self):
         print("training here!")
@@ -57,10 +58,10 @@ class mcmc_train_test(object):
                 self.model_logistic = self.sampler_logistic.sparsify_model_params(self.model_logistic)
                 # self.model_cdf = self.sampler_logistic.sparsify_model_params(self.model_cdf) 
                 x_t = X[t]
-                u_t = self.model_logistic(self.x_t)
-                p_approx = self.price_approx(u_t)
-                p_t = min(max(p_t, 0), self.B)
-                v_t = V[t]
+                u_t = self.model_logistic(x_t)
+                g_t = self.g_approx(u_t)
+                p_t = min(max(g_t, 0), self.B)
+                v_t = self.V[t]
                 y_t = int(v_t >= p_t)
                 F_t = self.model_cdf.mapping(torch.tensor((p_t - u_t).astype('float32'))).detach().numpy()
                 loss = self.loss_fn(y_t, 1-F_t)
