@@ -55,6 +55,10 @@ def main():
 
     N, D = config["data"]["sample_size"], config["data"]["dimension"]
     X, y, W, V = build_toy_dataset(N, D)
+    X = torch.tensor(X.astype('float32')).to(device)
+    y = torch.tensor(y.astype('float32')).to(device)
+    W = torch.tensor(W.astype('float32')).to(device)
+    V = torch.tensor(V.astype('float32')).to(device)
     #plt.scatter(np.arange(W.size), W.flatten())
     print(math.ceil(max(V)))
     
@@ -81,6 +85,8 @@ def main():
     # Initialize the neural network with a random dummy batch (Lazy)
     model_logistic = model1.to(device, torch.float32)
     model_cdf = model2.to(device, torch.float32)
+    
+    #print(model_logistic(X_t))
 
     config["model"]["logistic_total_par"] = sum(P.numel() for P in model_logistic.parameters() if P.requires_grad)
     print(config["model"]["logistic_total_par"])
