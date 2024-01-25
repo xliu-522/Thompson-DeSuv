@@ -11,6 +11,7 @@ from src.train import mcmc_train_test
 import models
 import numpy as np
 import matplotlib.pyplot as plt
+from pynverse import inversefunc
 from datetime import datetime
 #from unique_names_generator import get_random_name
 
@@ -29,7 +30,7 @@ def main():
     device = (
         "cuda"
         if torch.cuda.is_available()
-        else "mps"
+        else "cpu"
         if torch.backends.mps.is_available()
         else "cpu"
     )
@@ -58,9 +59,8 @@ def main():
     X = torch.tensor(X.astype('float32')).to(device)
     y = torch.tensor(y.astype('float32')).to(device)
     W = torch.tensor(W.astype('float32')).to(device)
-    V = torch.tensor(V.astype('float32')).to(device)
     #plt.scatter(np.arange(W.size), W.flatten())
-    print(math.ceil(max(V)))
+    B = math.ceil(max(V))
     
 
     print("**** Load Model ****")
@@ -83,8 +83,8 @@ def main():
         print(f"Model {model_name2} not found.")
 
     # Initialize the neural network with a random dummy batch (Lazy)
-    model_logistic = model1.to(device, torch.float32)
-    model_cdf = model2.to(device, torch.float32)
+    model_logistic = model1.to(device)
+    model_cdf = model2.to(device)
     
     #print(model_logistic(X_t))
 
@@ -95,7 +95,25 @@ def main():
     print(config["model"]["cdf_total_par"])
     
     
-    
+    u_t = model_logistic(X[0])
+    F_t = model_cdf.mapping(u_t).detach().numpy()
+    f_t = np.exp(-model_cdf.forward(u_t).detach().numpy().squeeze())
+    print(F_t)
+    print(f_t)
+    phi_func = (lambda u: u - (1-F_t)/f_t)
+    invfunc = inversefunc(phi_func)
+    u_t = u_t.detach().numpy()
+    g_t = u_t + invfunc(-u_t)
+    p_t = min(max(g_t.squeeze(), 0), B)
+    print(p_t)
+    v_t = V[0]
+    y_t = torch.tensor(int(v_t >= p_t))
+    loss_fn = nn.BCELoss()
+    F_t = model_cdf.mapping(torch.tensor((p_t - u_t).astype('float32')))
+    print(y_t)
+    print(1-F_t)
+    loss = loss_fn(y_t, 1-F_t)
+    print(loss)
     # print("**** Create directory ****")
     # # Get the current date and time
     # current_time = datetime.now()
