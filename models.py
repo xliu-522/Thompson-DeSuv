@@ -308,12 +308,18 @@ class LogisticNet(nn.Module):
 
 class CDFNet(nn.Module):
     """Solve conditional ODE. Single output dim."""
-    def __init__(self, hidden_dim=32, output_dim=1,
-                 nonlinearity=nn.Tanh,
-                 device="cpu", n=15, lr=1e-3):
+    def __init__(self, hidden_dim=32, output_dim=1, device="cpu",
+                 nonlinearity=nn.Tanh, n=15, lr=1e-3):
         super().__init__()
-
+        
         self.output_dim = output_dim
+
+        if device == "gpu":
+            self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+            print(f"CondODENet: {device} specified, {self.device} used")
+        else:
+            self.device = torch.device("cpu")
+            print(f"CondODENet: {device} specified, {self.device} used")
 
         self.dudt = nn.Sequential(
             nn.Linear(1, hidden_dim),
@@ -331,17 +337,17 @@ class CDFNet(nn.Module):
 
         self.n = n
         u_n, w_n = np.polynomial.legendre.leggauss(n)
-        self.u_n = nn.Parameter(torch.tensor(u_n,dtype=torch.float32)[None,:],requires_grad=False)
-        self.w_n = nn.Parameter(torch.tensor(w_n,dtype=torch.float32)[None,:],requires_grad=False)
+        self.u_n = nn.Parameter(torch.tensor(u_n,device=self.device,dtype=torch.float32)[None,:],requires_grad=False)
+        self.w_n = nn.Parameter(torch.tensor(w_n,device=self.device,dtype=torch.float32)[None,:],requires_grad=False)
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
         
     def mapping(self, t):
-        t = t[:,None]
+        t = t[:,None].to(self.device)
         tau = torch.matmul(t/2, 1+self.u_n) # N x n
         tau_ = torch.flatten(tau)[:,None] # Nn x 1. Think of as N n-dim vectors stacked on top of each other
         f_n = self.dudt(tau_).reshape((*tau.shape, self.output_dim)) # N x n x d_out
         pred = t/2 * ((self.w_n[:,:,None] * f_n).sum(dim=1))
-        return torch.sigmoid(pred).squeeze() # F_0(x)
+        return torch.tanh(pred).squeeze() # F_0(x)
     
     def forward(self, t):
         F = self.mapping(t)
