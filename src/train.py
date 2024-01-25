@@ -13,7 +13,7 @@ import time
 import math
 
 class mcmc_train_test(object):
-    def __init__(self, device, X, y, theta, config, model_logistic, model_cdf):
+    def __init__(self, device, X, y, theta, V, config, model_logistic, model_cdf):
         self.config = config
         self.device = device
         self.model_logistic = model_logistic
@@ -36,10 +36,11 @@ class mcmc_train_test(object):
         """ approximate the optimal price """
         F_t = self.model_cdf.mapping(u_t).detach().numpy()
         f_t = np.exp(-self.model_cdf.forward(u_t).detach().numpy().squeeze())
-        g_Wt = self.model_cdf.dudt(u_t).detach().numpy()
-        phi_t = u_t - 1/(g_Wt * (1+(1/(1+torch.exp(-u_t)))))
-
-        return phi_t
+        phi_func = (lambda u: u - (1-F_t)/f_t)
+        invfunc = inversefunc(phi_func)
+        u_t = u_t.detach().numpy()
+        g_t = u_t + invfunc(-u_t)
+        return u_t, g_t.squeeze()
        
     def train_it(self):
         print("training here!")
@@ -57,13 +58,13 @@ class mcmc_train_test(object):
                 # update theta using logistic loss 
                 self.model_logistic = self.sampler_logistic.sparsify_model_params(self.model_logistic)
                 # self.model_cdf = self.sampler_logistic.sparsify_model_params(self.model_cdf) 
-                x_t = X[t]
+                x_t = self.X[t]
                 u_t = self.model_logistic(x_t)
-                g_t = self.g_approx(u_t)
+                u_t, g_t = self.g_approx(u_t)
                 p_t = min(max(g_t, 0), self.B)
                 v_t = self.V[t]
-                y_t = int(v_t >= p_t)
-                F_t = self.model_cdf.mapping(torch.tensor((p_t - u_t).astype('float32'))).detach().numpy()
+                y_t = torch.tensor(int(v_t >= p_t))
+                F_t = self.model_cdf.mapping(torch.tensor((p_t - u_t).astype('float32')))
                 loss = self.loss_fn(y_t, 1-F_t)
                 loss.backward()
                 #loss = self.loss_fn(self.)
