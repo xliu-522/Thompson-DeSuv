@@ -328,9 +328,6 @@ class CDFNet(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
             nonlinearity(),
 
-            nn.Linear(hidden_dim, hidden_dim),
-            nonlinearity(),
-
             nn.Linear(hidden_dim, output_dim),
             nn.Softplus()
         )
@@ -349,6 +346,19 @@ class CDFNet(nn.Module):
         pred = t/2 * ((self.w_n[:,:,None] * f_n).sum(dim=1))
         return torch.tanh(pred).squeeze() # F_0(x)
     
+    # def mapping_prime(self, t):
+    #     t = t[:,None].to(self.device)
+    #     tau = torch.matmul(t/2, 1+self.u_n) # N x n
+    #     tau_ = torch.flatten(tau)[:,None] # Nn x 1. Think of as N n-dim vectors stacked on top of each other
+    #     f_n = self.dudt(tau_).reshape((*tau.shape, self.output_dim)) # N x n x d_out
+    #     tau2_ = torch.tensor(tau_, requires_grad=True)
+    #     f_n2 = self.dudt(tau2_).reshape((*tau.shape, self.output_dim))
+       
+    #     dfn_dx = torch.autograd.grad(f_n2, tau2_, grad_outputs=torch.ones_like(f_n2))[0]
+    #     pred_prime = 1/2 * ((self.w_n[:,:,None] * f_n).sum(dim=1)) + t/2 * ((self.w_n[:,:,None] * dfn_dx).sum(dim=1)) + 0.5*(self.u_n + 1)
+    #     return pred_prime
+    
+
     def forward(self, t):
         F = self.mapping(t)
         du = self.dudt(t[:,None]).squeeze()
