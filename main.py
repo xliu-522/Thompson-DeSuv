@@ -13,6 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pynverse import inversefunc
 from datetime import datetime
+import matplotlib.pyplot as plt
 #from unique_names_generator import get_random_name
 
 def main():
@@ -39,8 +40,10 @@ def main():
     print("**** Simulate data ****")
     def build_toy_dataset(N, D=50, noise_std=0.1):
         np.random.seed(1234)
-        X = np.random.random((N, D))
-        W = np.random.random((D, 1))
+        # X = np.random.random((N, D))
+        # W = np.random.random((D, 1))
+        X = np.random.normal(0, 1, (N, D))
+        W = np.random.normal(0, 1, (D, 1))
         b = np.random.normal(0, 1, (N, 1))
         zero_ind = np.arange(D//4, D)
         W[zero_ind, :] = 0
@@ -56,15 +59,19 @@ def main():
 
     N, D = config["data"]["sample_size"], config["data"]["dimension"]
     X, y, W, V = build_toy_dataset(N, D)
+    
     print("**** Fit spline interpolation ****")
 
-    X = torch.tensor(X.astype('float32')).to(device)
-    y = torch.tensor(y.astype('float32')).to(device)
-    W = torch.tensor(W.astype('float32')).to(device)
+    # X = torch.tensor(X.astype('float32')).to(device)
+    # y = torch.tensor(y.astype('float32')).to(device)
+    # W = torch.tensor(W.astype('float32')).to(device)
     #plt.scatter(np.arange(W.size), W.flatten())
     B = math.ceil(max(V))
     
-    
+    def init_weights(m):
+        if isinstance(m, nn.Linear):
+            torch.nn.init.uniform_(m.weight)
+            m.bias.data.fill_(0.01)
 
 
     print("**** Load Model ****")
@@ -89,7 +96,8 @@ def main():
     # Initialize the neural network with a random dummy batch (Lazy)
     model_logistic = model1.to(device)
     model_cdf = model2.to(device)
-    
+    model_logistic.apply(init_weights)
+    #print(list(model_logistic.parameters()))
     #print(model_logistic(X_t))
 
     config["model"]["logistic_total_par"] = sum(P.numel() for P in model_logistic.parameters() if P.requires_grad)
@@ -98,11 +106,75 @@ def main():
     config["model"]["cdf_total_par"] = sum(P.numel() for P in model_cdf.parameters() if P.requires_grad)
     print(config["model"]["cdf_total_par"])
     
-    
-    phi_t = model_logistic(X[0])
-    
-    print(model_cdf.mapping(phi_t))
-    print(model_cdf.mapping_prime(phi_t))
+    #Initialize beta
+    beta_t = np.random.random((D,1))
+    l_t = 0
+    ll = 1000
+    for tt in range(N):
+        # Exploration phase
+
+        X_exp = X[l_t:l_t+ll]
+        V_exp = V[l_t:l_t+ll]
+        # Offer price p_t ~ N(X^Tb,1)
+        X_b = model_logistic(torch.tensor(X_exp.astype('float32'))).detach().numpy().squeeze()
+        P_exp = np.random.uniform(0, B)
+        #print(P_exp)
+        error_est = P_exp - X_b
+        print(X_b[0])
+        plt.hist(error_est)
+        plt.show()
+
+        # Approximate noise distribution using cdf NN
+        model_cdf.optimise(torch.tensor(error_est.astype('float32')),1500)
+        t_eval = np.linspace(-10,10,100)
+        #y = expit(cnet.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
+        F_dist = expit(model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
+        f_dist = np.exp(-model_cdf.forward(torch.tensor(t_eval.astype('float32'))).detach().numpy().squeeze())
+        plt.plot(t_eval, F_dist)
+        plt.show()
+        fig, ax = plt.subplots()
+        ax.hist(error_est, density=True, bins=50, alpha=0.6)
+        ax.plot(t_eval, f_dist, '-r', label='DeCDF')
+        plt.xlabel('x')
+        plt.ylabel('p(x)')
+        plt.legend()
+        plt.title("Learning a MoG distribution (n=1000)")
+        plt.tight_layout()
+        plt.show()
+
+        # Store data
+        y_exp = torch.tensor([float(p <= v) for p, v in zip(P_exp, V_exp)], dtype=torch.float32)
+
+        # Update estimate of Beta
+        loss_fn = nn.BCELoss()
+        X_exp = torch.tensor(X_exp.astype('float32'), requires_grad=True)
+        P_exp = torch.tensor(P_exp.astype('float32'))
+        F_t = model_cdf.mapping_logistic(X_exp, P_exp).detach()
+        #f_t = np.exp(-model_cdf.forward(torch.tensor((P_exp - pred).astype('float32'))).detach().numpy().squeeze())
+        # print(max(1-F_t))
+        # print(min(1-F_t))
+        print(F_t.requires_grad)
+        loss = loss_fn(1-F_t, y_exp)
+        loss.backward()
+
+        # # Update estimate of Beta
+        # loss_fn = nn.BCELoss()
+        # pred = model_logistic(torch.tensor(X_exp.astype('float32'))).detach().numpy().squeeze()
+        # F_t = model_cdf.mapping(torch.tensor((P_exp - pred).astype('float32'))).detach()
+        # F_t[F_t < 0] = 0
+        # F_t = torch.tensor(F_t, requires_grad=True)
+        # f_t = np.exp(-model_cdf.forward(torch.tensor((P_exp - pred).astype('float32'))).detach().numpy().squeeze())
+        # # print(max(1-F_t))
+        # # print(min(1-F_t))
+        # loss = loss_fn(1-F_t, y_exp)
+        # loss.backward()
+
+        # Update estimate of phi
+        
+        ## update episode
+        l_t += ll
+        
+
     # F_t = model_cdf.mapping(phi_t).detach().numpy()
     # f_t = np.exp(-model_cdf.forward(phi_t).detach().numpy().squeeze())
 
