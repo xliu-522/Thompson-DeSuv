@@ -301,10 +301,11 @@ class LogisticNet(nn.Module):
         self.linear = nn.Linear(input_dim, 1)
         self.sigmoid = nn.Sigmoid()
 
+
     def forward(self, x):
         x = self.linear(x)
         #x = self.sigmoid(x)
-        return x
+        return x.squeeze()
 
 class CDFNet(nn.Module):
     """Solve conditional ODE. Single output dim."""
@@ -337,6 +338,7 @@ class CDFNet(nn.Module):
         self.u_n = nn.Parameter(torch.tensor(u_n,device=self.device,dtype=torch.float32)[None,:],requires_grad=False)
         self.w_n = nn.Parameter(torch.tensor(w_n,device=self.device,dtype=torch.float32)[None,:],requires_grad=False)
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        self.subNet = LogisticNet()
         
     def mapping(self, t):
         t = t[:,None].to(self.device)
@@ -344,7 +346,8 @@ class CDFNet(nn.Module):
         tau_ = torch.flatten(tau)[:,None] # Nn x 1. Think of as N n-dim vectors stacked on top of each other
         f_n = self.dudt(tau_).reshape((*tau.shape, self.output_dim)) # N x n x d_out
         pred = t/2 * ((self.w_n[:,:,None] * f_n).sum(dim=1))
-        return torch.tanh(pred).squeeze() # F_0(x)
+        #return torch.tanh(pred).squeeze() # F_0(x)
+        return pred.squeeze()
     
     # def mapping_prime(self, t):
     #     t = t[:,None].to(self.device)
@@ -362,7 +365,8 @@ class CDFNet(nn.Module):
     def forward(self, t):
         F = self.mapping(t)
         du = self.dudt(t[:,None]).squeeze()
-        return -(torch.log(du) + torch.log(1-F**2))
+        #return -(torch.log(du) + torch.log(1-F**2))
+        return -(torch.log(du) + F - 2*torch.log(1+torch.exp(F)))
     
     def sum_forward(self, t):
         return self.forward(t).sum()
@@ -375,3 +379,14 @@ class CDFNet(nn.Module):
             self.optimizer.step()
             if i % 100 == 0:
                 print(loss.item())
+
+    def mapping_logistic(self, x, p):
+        t = p - self.subNet(x)
+        t = t[:,None].to(self.device)
+        tau = torch.matmul(t/2, 1+self.u_n) # N x n
+        tau_ = torch.flatten(tau)[:,None] # Nn x 1. Think of as N n-dim vectors stacked on top of each other
+        f_n = self.dudt(tau_).reshape((*tau.shape, self.output_dim)) # N x n x d_out
+        pred = t/2 * ((self.w_n[:,:,None] * f_n).sum(dim=1))
+        pred = torch.tanh(pred).squeeze()
+        pred[pred<0] = 0
+        return pred # F_0(x)
