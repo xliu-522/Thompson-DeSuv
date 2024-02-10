@@ -2,6 +2,7 @@ import os
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 import argparse
 from scipy.special import expit
+from scipy.stats import truncnorm  
 import json
 import math
 import torch
@@ -37,14 +38,22 @@ def main():
     )
     print("Device: ", device)
 
+    def truncated_gaussian(mu, sigma, lower_bound, upper_bound, size=1):
+        while True:
+            sample = np.random.normal(mu, sigma, size)
+            if np.all((sample >= lower_bound) & (sample <= upper_bound)):
+                return sample
+
     print("**** Simulate data ****")
     def build_toy_dataset(N, D=50, noise_std=0.1):
         np.random.seed(1234)
         # X = np.random.random((N, D))
         # W = np.random.random((D, 1))
-        X = np.random.normal(0, 1, (N, D))
-        W = np.random.normal(0, 1, (D, 1))
-        b = np.random.normal(0, 1, (N, 1))
+        # X = np.random.normal(0, 1, (N, D))
+        X = np.array([truncnorm.rvs(0, 1, size = D) for _ in range(N)])
+        W = np.random.random((D, 1))
+        b = np.array([truncnorm.rvs(-0.5, 0.5, size=1) for _ in range(N)] )
+        #b = np.random.normal(0, 1, (N, 1))
         zero_ind = np.arange(D//4, D)
         W[zero_ind, :] = 0
         V = X.dot(W) + b
@@ -66,7 +75,10 @@ def main():
     # y = torch.tensor(y.astype('float32')).to(device)
     # W = torch.tensor(W.astype('float32')).to(device)
     #plt.scatter(np.arange(W.size), W.flatten())
-    B = math.ceil(max(V))
+    B = math.ceil(max(V.squeeze()))
+    print(B)
+    plt.plot(V)
+    plt.show()
     
     def init_weights(m):
         if isinstance(m, nn.Linear):
@@ -96,7 +108,7 @@ def main():
     # Initialize the neural network with a random dummy batch (Lazy)
     model_logistic = model1.to(device)
     model_cdf = model2.to(device)
-    model_logistic.apply(init_weights)
+    #model_logistic.apply(init_weights)
     #print(list(model_logistic.parameters()))
     #print(model_logistic(X_t))
 
@@ -106,21 +118,36 @@ def main():
     config["model"]["cdf_total_par"] = sum(P.numel() for P in model_cdf.parameters() if P.requires_grad)
     print(config["model"]["cdf_total_par"])
     
+    def logpi(y_t, x_t, p_t, beta_t, mu0=0, vsigma=1):
+        pred = x_t.dot(beta_t).squeeze()
+        F_t =  expit(model_cdf.mapping(torch.tensor((p_t - pred).astype('float32'))).detach().numpy())
+        f_t = np.exp(-model_cdf.forward(torch.tensor((P_exp - pred).astype('float32'))).detach().numpy().squeeze())
+        plt.plot(F_t)
+        plt.show()
+        loss = sum([ff/FF * (1-yy/(1-FF)) * xx for ff, FF, yy, xx in zip(f_t, F_t, y_t, x_t)])
+        print(loss)
+        lpi = sum([yy * np.log(1-FF) + (1-yy) * np.log(FF) for yy, FF in zip(y_t, F_t)])
+        return loss, lpi
+    
     #Initialize beta
-    beta_t = np.random.random((D,1))
+    beta_t = np.random.normal(0, 0.1, (D,1))
     l_t = 0
-    ll = 1000
+    l_ra = 1000
+    l_ta = 500
+    step = 0
+    nSple = 10
+    eta0 = 0.5
+    beta_list = []
     for tt in range(N):
         # Exploration phase
 
-        X_exp = X[l_t:l_t+ll]
-        V_exp = V[l_t:l_t+ll]
+        X_exp = X[l_t:l_t+l_ra]
+        V_exp = V[l_t:l_t+l_ra]
         # Offer price p_t ~ N(X^Tb,1)
-        X_b = model_logistic(torch.tensor(X_exp.astype('float32'))).detach().numpy().squeeze()
-        P_exp = np.random.uniform(0, B)
-        #print(P_exp)
+        #X_b = model_logistic(torch.tensor(X_exp.astype('float32'))).detach().numpy().squeeze()
+        X_b = X_exp.dot(beta_t).squeeze()
+        P_exp = np.random.uniform(0, B, size = l_ra)
         error_est = P_exp - X_b
-        print(X_b[0])
         plt.hist(error_est)
         plt.show()
 
@@ -143,21 +170,36 @@ def main():
         plt.show()
 
         # Store data
-        y_exp = torch.tensor([float(p <= v) for p, v in zip(P_exp, V_exp)], dtype=torch.float32)
+        y_exp = np.array([float(p <= v) for p, v in zip(P_exp, V_exp)])
 
         # Update estimate of Beta
-        loss_fn = nn.BCELoss()
-        X_exp = torch.tensor(X_exp.astype('float32'), requires_grad=True)
-        P_exp = torch.tensor(P_exp.astype('float32'))
-        F_t = model_cdf.mapping_logistic(X_exp, P_exp).detach()
+        eta = eta0/(tt+1)
+        loss, lpi = logpi(y_exp, X_exp, P_exp, beta_t)
+        if step % 50 == 0:
+            for k in range(nSple):
+                epsilon = np.random.normal(size=D)
+                beta_prop = beta_t - eta*loss + math.sqrt(2*eta) * epsilon
+                lossprop, lpiprop = logpi(y_exp, X_exp, P_exp, beta_prop)
+                r = lpiprop - lpi        
+                prob = min(1, math.exp(r))
+                if np.random.uniform(1) <= prob:
+                    beta_t = beta_prop
+                    lpi = lpiprop
+                    loss = lossprop
+                beta_list.append(beta_t)
+        
+
+        # Update esimtate of phi and g using spline interpolation
+
+        u_t = X_exp.dot(beta_t).squeeze()
+        plt.plot(u_t)
+
         #f_t = np.exp(-model_cdf.forward(torch.tensor((P_exp - pred).astype('float32'))).detach().numpy().squeeze())
         # print(max(1-F_t))
         # print(min(1-F_t))
-        print(F_t.requires_grad)
-        loss = loss_fn(1-F_t, y_exp)
-        loss.backward()
+        
 
-        # # Update estimate of Beta
+        # Update estimate of Beta
         # loss_fn = nn.BCELoss()
         # pred = model_logistic(torch.tensor(X_exp.astype('float32'))).detach().numpy().squeeze()
         # F_t = model_cdf.mapping(torch.tensor((P_exp - pred).astype('float32'))).detach()
@@ -172,7 +214,7 @@ def main():
         # Update estimate of phi
         
         ## update episode
-        l_t += ll
+        l_t = l_t + l_ra + l_ta
         
 
     # F_t = model_cdf.mapping(phi_t).detach().numpy()
