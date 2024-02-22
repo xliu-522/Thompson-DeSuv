@@ -3,6 +3,7 @@ os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 import argparse
 from scipy.special import expit
 from scipy.stats import truncnorm  
+from scipy.optimize import fsolve
 import json
 import math
 import torch
@@ -15,6 +16,7 @@ import matplotlib.pyplot as plt
 from pynverse import inversefunc
 from datetime import datetime
 import matplotlib.pyplot as plt
+from scipy.interpolate import CubicSpline, make_interp_spline
 #from unique_names_generator import get_random_name
 
 def main():
@@ -45,14 +47,26 @@ def main():
                 return sample
 
     print("**** Simulate data ****")
+
+    a_trunc = -5  # Lower bound
+    b_trunc = 5  # Upper bound
+    loc = 0  # Mean
+    scale = 1  # Standard deviation
+    a, b = (a_trunc - loc) / scale, (b_trunc - loc) / scale
+
     def build_toy_dataset(N, D=50, noise_std=0.1):
         np.random.seed(1234)
         # X = np.random.random((N, D))
         # W = np.random.random((D, 1))
         # X = np.random.normal(0, 1, (N, D))
-        X = np.array([truncnorm.rvs(0, 1, size = D) for _ in range(N)])
+        a_trunc = 0  # Lower bound
+        b_trunc = 2  # Upper bound
+        loc = 0  # Mean
+        scale = 1  # Standard deviation
+        a, b = (a_trunc - loc) / scale, (b_trunc - loc) / scale
+        X = np.array([truncnorm.rvs(a, b, size = D) for _ in range(N)])
         W = np.random.random((D, 1))
-        b = np.array([truncnorm.rvs(-0.5, 0.5, size=1) for _ in range(N)] )
+        b = np.array([truncnorm.rvs(a, b, size=1) for _ in range(N)] )
         #b = np.random.normal(0, 1, (N, 1))
         zero_ind = np.arange(D//4, D)
         W[zero_ind, :] = 0
@@ -85,7 +99,15 @@ def main():
             torch.nn.init.uniform_(m.weight)
             m.bias.data.fill_(0.01)
 
+    def equation_to_solve(x, y):
+        return x - (1+np.exp(-x)) - y
+    
+    def F(u):
+        return truncnorm.cdf(u, a, b, loc=loc, scale=scale)
 
+# Define the probability density function (PDF) of the truncated normal distribution
+    def f_prime(u):
+        return truncnorm.pdf(u, a, b, loc=loc, scale=scale)
     print("**** Load Model ****")
     model_name1 = config["model"]["model_name1"]
     model_name2 = config["model"]["model_name2"]
@@ -118,10 +140,13 @@ def main():
     config["model"]["cdf_total_par"] = sum(P.numel() for P in model_cdf.parameters() if P.requires_grad)
     print(config["model"]["cdf_total_par"])
     
-    def logpi(y_t, x_t, p_t, beta_t, mu0=0, vsigma=1):
+    def logpi(D_it, beta_t, mu0=0, vsigma=1):
+        x_t = D_it["X"]
+        y_t = D_it["Y"]
+        p_t = D_it["P"]
         pred = x_t.dot(beta_t).squeeze()
         F_t =  expit(model_cdf.mapping(torch.tensor((p_t - pred).astype('float32'))).detach().numpy())
-        f_t = np.exp(-model_cdf.forward(torch.tensor((P_exp - pred).astype('float32'))).detach().numpy().squeeze())
+        f_t = np.exp(-model_cdf.forward(torch.tensor((p_t - pred).astype('float32'))).detach().numpy().squeeze())
         plt.plot(F_t)
         plt.show()
         loss = sum([ff/FF * (1-yy/(1-FF)) * xx for ff, FF, yy, xx in zip(f_t, F_t, y_t, x_t)])
@@ -130,70 +155,126 @@ def main():
         return loss, lpi
     
     #Initialize beta
-    beta_t = np.random.normal(0, 0.1, (D,1))
-    l_t = 0
-    l_ra = 1000
-    l_ta = 500
-    step = 0
-    nSple = 10
-    eta0 = 0.5
-    beta_list = []
-    for tt in range(N):
-        # Exploration phase
+    # beta_t = np.random.normal(0, 0.1, (D,1))
+    # l_t = 0
+    # l_ra = 1000
+    # l_ta = 500
+    # alpha = 0.2
+    # step = 0
+    # nSple = 10
+    # eta0 = 0.5
+    # beta_list = []
+    # D_it = {"I":[], "X":[], "Y":[], "P":[]}
+    # D_or = {"X":[], "Y":[], "P":[]}
+    # cum_regret_plcy = 0
+    # cum_regret_orcl = 0
+    # for tt in range(N):
+    #     X_t = X[tt]
+    #     V_t = V[tt]
+    #     I_t = 1 if np.random.rand() <= alpha else 0
+    #     if I_t == 1:
+    #         # Exploration phase
+    #         #X_b = x_t.dot(beta_t).squeeze()
+    #         P_t = np.random.uniform(0, B, size = 1)
+    #         D_or["X"].append(X_t)
+    #         D_or["P"].append(P_t)
+    #         #error_est = P_exp - X_b
+    #         # plt.hist(error_est)
+    #         # plt.show()
+    #     # X_exp = X[l_t:l_t+l_ra]
+    #     # V_exp = V[l_t:l_t+l_ra]
+    #     # Offer price p_t ~ N(X^Tb,1)
+    #     #X_b = model_logistic(torch.tensor(X_exp.astype('float32'))).detach().numpy().squeeze()
+       
 
-        X_exp = X[l_t:l_t+l_ra]
-        V_exp = V[l_t:l_t+l_ra]
-        # Offer price p_t ~ N(X^Tb,1)
-        #X_b = model_logistic(torch.tensor(X_exp.astype('float32'))).detach().numpy().squeeze()
-        X_b = X_exp.dot(beta_t).squeeze()
-        P_exp = np.random.uniform(0, B, size = l_ra)
-        error_est = P_exp - X_b
-        plt.hist(error_est)
-        plt.show()
+        
+    #     else:
+    #         # Approximate noise distribution using exploration dataset
+    #         P_or = D_or["P"]
+    #         X_or = D_or["X"]
+    #         if len(P_or) > 1000:
+    #             # If we have enough data point to estimate NN
+    #             error_est = P_or - X_or.dot(beta_t)
+    #             model_cdf.optimise(torch.tensor(error_est.astype('float32')),1500)
+    #         #If not, just use the initialization of the network
+    #         t_eval = np.linspace(-10,10,100)
+    #             #y = expit(cnet.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
+    #         F_dist = expit(model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
+    #         f_dist = np.exp(-model_cdf.forward(torch.tensor(t_eval.astype('float32'))).detach().numpy().squeeze())
+    #         plt.plot(t_eval, F_dist)
+    #         plt.show()
+    #         fig, ax = plt.subplots()
+    #         ax.hist(error_est, density=True, bins=50, alpha=0.6)
+    #         ax.plot(t_eval, f_dist, '-r', label='DeCDF')
+    #         plt.xlabel('x')
+    #         plt.ylabel('p(x)')
+    #         plt.legend()
+    #         plt.title("Learning a MoG distribution (n=1000)")
+    #         plt.tight_layout()
+    #         plt.show()
 
-        # Approximate noise distribution using cdf NN
-        model_cdf.optimise(torch.tensor(error_est.astype('float32')),1500)
-        t_eval = np.linspace(-10,10,100)
-        #y = expit(cnet.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
-        F_dist = expit(model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
-        f_dist = np.exp(-model_cdf.forward(torch.tensor(t_eval.astype('float32'))).detach().numpy().squeeze())
-        plt.plot(t_eval, F_dist)
-        plt.show()
-        fig, ax = plt.subplots()
-        ax.hist(error_est, density=True, bins=50, alpha=0.6)
-        ax.plot(t_eval, f_dist, '-r', label='DeCDF')
-        plt.xlabel('x')
-        plt.ylabel('p(x)')
-        plt.legend()
-        plt.title("Learning a MoG distribution (n=1000)")
-        plt.tight_layout()
-        plt.show()
+    #     # # Store data
+    #     # y_exp = np.array([float(p <= v) for p, v in zip(P_exp, V_exp)])
 
-        # Store data
-        y_exp = np.array([float(p <= v) for p, v in zip(P_exp, V_exp)])
-
-        # Update estimate of Beta
-        eta = eta0/(tt+1)
-        loss, lpi = logpi(y_exp, X_exp, P_exp, beta_t)
-        if step % 50 == 0:
-            for k in range(nSple):
-                epsilon = np.random.normal(size=D)
-                beta_prop = beta_t - eta*loss + math.sqrt(2*eta) * epsilon
-                lossprop, lpiprop = logpi(y_exp, X_exp, P_exp, beta_prop)
-                r = lpiprop - lpi        
-                prob = min(1, math.exp(r))
-                if np.random.uniform(1) <= prob:
-                    beta_t = beta_prop
-                    lpi = lpiprop
-                    loss = lossprop
-                beta_list.append(beta_t)
+    #         # Update estimate of Beta using exploitation dataset
+    #         eta = eta0/(tt+1)
+    #         loss, lpi = logpi(D_it, beta_t)
+    #         if step % 50 == 0:
+    #             for k in range(nSple):
+    #                 epsilon = np.random.normal(size=D)
+    #                 beta_prop = beta_t - eta*loss + math.sqrt(2*eta) * epsilon
+    #                 lossprop, lpiprop = logpi(D_it, beta_prop)
+    #                 r = lpiprop - lpi        
+    #                 prob = min(1, math.exp(r))
+    #                 if np.random.uniform(1) <= prob:
+    #                     beta_t = beta_prop
+    #                     lpi = lpiprop
+    #                     loss = lossprop
+    #                 beta_list.append(beta_t)
         
 
-        # Update esimtate of phi and g using spline interpolation
+    #         # Update esimtate of phi and g using spline interpolation
+    #         u_t = X_t.dot(beta_t).squeeze()
+    #         phi_values = np.linspace(min(u_t), max(u_t), 100)
+    #         t_values = []
+    #         for phi in phi_values:
+    #             solution = float(fsolve(equation_to_solve, x0=0, args=(y,)))
+    #             t_values.append(solution)
+    #         g_w = model_cdf.dudt(torch.tensor(t_values.astype('float32'))[:,None]).squeeze().detach().numpy()
+    #         F0_ut = model_cdf.mapping(torch.tensor(t_values.astype('float32'))).detach().numpy()
+    #         phi_values = t_values - (1+np.exp(-F0_ut))/g_w
+    #         # Generate some example data
+    #         sorted_indices = np.argsort(phi_values)
+    #         phi_sorted = phi_values[sorted_indices]
+    #         t_sorted = t_values[sorted_indices]
+   
+    #         # Create a cubic spline interpolation function
+    #         spline_interpolation = CubicSpline(phi_sorted, t_sorted)
 
-        u_t = X_exp.dot(beta_t).squeeze()
-        plt.plot(u_t)
+    #         # Generate more points for a smoother curve
+    #         phi_interp = np.linspace(min(phi_sorted), max(phi_sorted), 20)
+    #         t_interp = spline_interpolation(phi_interp)
 
+    #         # Plot the original data and the spline interpolation
+    #         plt.scatter(phi_sorted, t_sorted, label='Original Data')
+    #         plt.plot(phi_interp, t_interp, label='Spline Interpolation', color='r')
+    #         plt.xlabel('phi')
+    #         plt.ylabel('t')
+    #         plt.legend()
+    #         plt.show()
+
+    #         P_t = u_t + spline_interpolation(-u_t)
+    #         D_it["X"] = X_t
+    #         D_it["P"] = P_t
+
+    #         # Calculate oracle price
+    #         u_star = X_t.dot(W).squeeze()
+    #         phi_star = u_star - (1-norm.cdf(u_star))/norm.pdf(u_star)
+
+        
+    #     # Calculate reward
+    #     regret_plcy = P_t * int(V_t >= P_t)
+        
         #f_t = np.exp(-model_cdf.forward(torch.tensor((P_exp - pred).astype('float32'))).detach().numpy().squeeze())
         # print(max(1-F_t))
         # print(min(1-F_t))
