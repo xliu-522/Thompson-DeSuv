@@ -6,7 +6,7 @@
         "batch_size": 128,
         "num_channels": 3,
         "train_test_split_perc": 0.8,
-        "sample_size": 10000,
+        "sample_size": 500,
         "dimension": 50
         },
     "sampler": {
@@ -24,7 +24,7 @@
     }, 
     "training":{
         "epoches": 10,
-        "numIter": 100000,
+        "numIter": 10000,
         "cycles": 6,
         "gamma": 5e-6,
         "alpha_0": 0.5,
