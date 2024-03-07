@@ -310,7 +310,7 @@ class LogisticNet(nn.Module):
 class CDFNet(nn.Module):
     """Solve conditional ODE. Single output dim."""
     def __init__(self, hidden_dim=32, output_dim=1, device="cpu",
-                 nonlinearity=nn.Tanh, n=15, lr=1e-3):
+                 nonlinearity=nn.Tanh, n=10, lr=1e-3):
         super().__init__()
         
         self.output_dim = output_dim
@@ -341,12 +341,14 @@ class CDFNet(nn.Module):
         self.subNet = LogisticNet()
         
     def mapping(self, t):
-        t = t[:,None].to(self.device)
-        tau = torch.matmul(t/2, 1+self.u_n) # N x n
+        t = t[:,None]
+        a = -10
+        b = t
+        tau = torch.matmul((b - a)/2, self.u_n) + (b+a)/2 # N x n
         tau_ = torch.flatten(tau)[:,None] # Nn x 1. Think of as N n-dim vectors stacked on top of each other
         f_n = self.dudt(tau_).reshape((*tau.shape, self.output_dim)) # N x n x d_out
-        pred = t/2 * ((self.w_n[:,:,None] * f_n).sum(dim=1))
-        #return torch.tanh(pred).squeeze() # F_0(x)
+        pred = (b-a)/2 * ((self.w_n[:,:,None] * f_n).sum(dim=1))
+        #return torch.tanh(pred).squeeze()
         return pred.squeeze()
     
     # def mapping_prime(self, t):
@@ -377,8 +379,8 @@ class CDFNet(nn.Module):
             loss = self.sum_forward(t)
             loss.backward()
             self.optimizer.step()
-            if i % 100 == 0:
-                print(loss.item())
+            # if i % 100 == 0:
+            #     print(loss.item())
 
     def mapping_logistic(self, x, p):
         t = p - self.subNet(x)
