@@ -57,7 +57,7 @@ def main():
     t_eval = np.linspace(-10,20,100)
     def build_toy_dataset(N, a, b, D=50, noise_std=0.1):
         # np.random.seed(1234)
-        X = np.random.uniform(1, 3, (N, D))
+        X = np.random.normal(0, 1, (N, D)) + 1
         # W = np.random.random((D, 1))
         # X = np.random.normal(0, 1, (N, D))
         #X = np.array([truncnorm.rvs(a, b, size = D) for _ in range(N)])
@@ -108,36 +108,37 @@ def main():
     def f_prime(u):
         return truncnorm.pdf(u, a, b, loc=loc, scale=scale)
     print("**** Load Model ****")
-    model_name1 = config["model"]["model_name1"]
-    model_name2 = config["model"]["model_name2"]
-    model_reference1 = getattr(models, model_name1)
-    model_reference2 = getattr(models, model_name2)
-    if model_reference1 is not None and callable(model_reference1):
-        # Create an instance of the class
-        model1 = model_reference1()
-        print(f"Found model {model_name1}. ")
-    else:
-        print(f"Model {model_name1} not found.")
+    model_cdf = models.CDFNet(D)
+    # model_name1 = config["model"]["model_name1"]
+    # model_name2 = config["model"]["model_name2"]
+    # model_reference1 = getattr(models, model_name1)
+    # model_reference2 = getattr(models, model_name2)
+    # if model_reference1 is not None and callable(model_reference1):
+    #     # Create an instance of the class
+    #     model1 = model_reference1()
+    #     print(f"Found model {model_name1}. ")
+    # else:
+    #     print(f"Model {model_name1} not found.")
 
-    if model_reference2 is not None and callable(model_reference2):
-        # Create an instance of the class
-        model2 = model_reference2()
-        print(f"Found model {model_name2}. ")
-    else:
-        print(f"Model {model_name2} not found.")
+    # if model_reference2 is not None and callable(model_reference2):
+    #     # Create an instance of the class
+    #     model2 = model_reference2()
+    #     print(f"Found model {model_name2}. ")
+    # else:
+    #     print(f"Model {model_name2} not found.")
 
-    # Initialize the neural network with a random dummy batch (Lazy)
-    model_logistic = model1.to(device)
-    model_cdf = model2.to(device)
+    # # Initialize the neural network with a random dummy batch (Lazy)
+    # model_logistic = model1.to(device)
+    # model_cdf = model2.to(device)
     #model_logistic.apply(init_weights)
     #print(list(model_logistic.parameters()))
     #print(model_logistic(X_t))
 
-    config["model"]["logistic_total_par"] = sum(P.numel() for P in model_logistic.parameters() if P.requires_grad)
-    print(config["model"]["logistic_total_par"])
+    # config["model"]["logistic_total_par"] = sum(P.numel() for P in model_logistic.parameters() if P.requires_grad)
+    # print(config["model"]["logistic_total_par"])
 
-    config["model"]["cdf_total_par"] = sum(P.numel() for P in model_cdf.parameters() if P.requires_grad)
-    print(config["model"]["cdf_total_par"])
+    # config["model"]["cdf_total_par"] = sum(P.numel() for P in model_cdf.parameters() if P.requires_grad)
+    # print(config["model"]["cdf_total_par"])
     
     def logpi(tt, D_it, beta_t, mu0=0, vsigma=1):
         mu0 = np.zeros(D)
@@ -145,15 +146,16 @@ def main():
         x_t = np.array(D_it["X"])
         y_t = np.array(D_it["Y"])
         p_t = np.array(D_it["P"])
-        print(len(x_t))
+        #print(len(x_t))
         pred = x_t.dot(beta_t)
         # print("beta_t", beta_t)
         # print("x_t", x_t)
         # print("p_t", p_t)
         # print("pred", pred)
         inp = (p_t - pred).reshape(-1)
-        print("input: ", inp)
-        F_t = expit(model_cdf.mapping(torch.tensor(inp.astype('float32'))).detach().numpy())
+        #print("input: ", inp)
+        output = model_cdf.mapping(torch.tensor(inp.astype('float32'))).detach().numpy()
+        F_t = 1 / (1 + np.exp(-2* (output - 1.5)))
         f_t = np.exp(-model_cdf.forward(torch.tensor(inp.astype('float32'))).detach().numpy().squeeze())
         if len(x_t) == 1:
             F_t = np.array([F_t])
@@ -237,20 +239,32 @@ def main():
                 if len(D_or["P"]) > len_plo:   
                     P_or = np.array(D_or["P"])
                     X_or = np.array(D_or["X"])
-                    error_est = (P_or - X_or.dot(beta_t)).flatten()
-                    model_cdf = models.CDFNet()
-                    model_cdf.optimise(torch.tensor(error_est.astype('float32')),1500)
-                    F_dist = expit(model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
+                    print(X_or)
+                    #error_est = (P_or - X_or.dot(beta_t)).flatten()
+                    model_cdf = models.CDFNet(D)
+                    for name, param in model_cdf.named_parameters():
+                        print(name, param.size())
+                    #model_cdf.dudt[0].weight = nn.Parameter(torch.randn(D, 1))
+                    # Fix the bias of the first layer P_t - W^T * X
+                    with torch.no_grad():
+                        model_cdf.first_layer.bias = nn.Parameter(torch.tensor(P_or,dtype=torch.float32)) 
+                    model_cdf.optimise(torch.tensor(-X_or.astype('float32')),1500)
+                    output = model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy()
+                    F_dist = 1 / (1 + np.exp(-2* (output - 1.5)))
+                    #F_dist = expit(model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
                     f_dist = np.exp(-model_cdf.forward(torch.tensor(t_eval.astype('float32'))).detach().numpy().squeeze())
-                    # fig, ax = plt.subplots()
-                    # ax.hist(error_est, density=True, bins=50, alpha=0.6)
-                    # ax.plot(t_eval, f_dist, '-r', label='DeCDF')
-                    # plt.xlabel('x')
-                    # plt.ylabel('p(x)')
-                    # plt.legend()
-                    # plt.title("Learning a MoG distribution (n=1000)")
-                    # plt.tight_layout()
-                    # plt.show()
+                    fig, ax = plt.subplots()
+                    beta_trained = np.transpose(model_cdf.first_layer.weight.detach().numpy())
+                    ax.hist(P_or - X_or.dot(beta_trained), density=True, bins=50, alpha=0.6)
+                    ax.plot(t_eval, f_dist, '-r', label='DeCDF')
+                    plt.xlabel('x')
+                    plt.ylabel('p(x)')
+                    plt.legend()
+                    plt.title("Learning a MoG distribution (n=1000)")
+                    plt.tight_layout()
+                    plt.show()
+                    plt.plot(F_dist)
+                    plt.show()
                 #y = expit(cnet.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
                 # F_dist = expit(model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
                 # f_dist = np.exp(-model_cdf.forward(torch.tensor(t_eval.astype('float32'))).detach().numpy().squeeze())
