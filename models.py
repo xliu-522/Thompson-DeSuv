@@ -309,7 +309,7 @@ class LogisticNet(nn.Module):
 
 class CDFNet(nn.Module):
     """Solve conditional ODE. Single output dim."""
-    def __init__(self, hidden_dim=32, output_dim=1, device="cpu",
+    def __init__(self, D, hidden_dim=32, output_dim=1, device="cpu",
                  nonlinearity=nn.Tanh, n=10, lr=1e-3):
         super().__init__()
         
@@ -321,6 +321,8 @@ class CDFNet(nn.Module):
         else:
             self.device = torch.device("cpu")
             print(f"CondODENet: {device} specified, {self.device} used")
+
+        self.first_layer = nn.Linear(D, 1)
 
         self.dudt = nn.Sequential(
             nn.Linear(1, hidden_dim),
@@ -341,7 +343,7 @@ class CDFNet(nn.Module):
         self.subNet = LogisticNet()
         
     def mapping(self, t):
-        t = t[:,None]
+        t = t[:, None]
         a = -10
         b = t
         tau = torch.matmul((b - a)/2, self.u_n) + (b+a)/2 # N x n
@@ -368,19 +370,23 @@ class CDFNet(nn.Module):
         F = self.mapping(t)
         du = self.dudt(t[:,None]).squeeze()
         #return -(torch.log(du) + torch.log(1-F**2))
-        return -(torch.log(du) + F - 2*torch.log(1+torch.exp(F)))
+        return -(torch.log(du) + torch.log(torch.tensor([2])) + F - 2*torch.log(1+torch.exp(F)))
+        #return -(torch.log(du) + F - 2*torch.log(1+torch.exp(F)))
     
     def sum_forward(self, t):
         return self.forward(t).sum()
     
     def optimise(self, t, niters):
+        print("X shape:", t.shape)
         for i in range(niters):
             self.optimizer.zero_grad()
-            loss = self.sum_forward(t)
+            t2 = self.first_layer(t)
+            t2 = t2.flatten()
+            loss = self.sum_forward(t2)
             loss.backward()
             self.optimizer.step()
-            # if i % 100 == 0:
-            #     print(loss.item())
+            if i % 100 == 0:
+                print(loss.item())
 
     def mapping_logistic(self, x, p):
         t = p - self.subNet(x)
