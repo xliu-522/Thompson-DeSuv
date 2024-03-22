@@ -2,7 +2,7 @@ import os
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 import argparse
 from scipy.special import expit
-from scipy.stats import truncnorm  
+from scipy.stats import truncnorm, norm  
 from scipy.optimize import fsolve
 import json
 import math
@@ -16,6 +16,7 @@ from numpy import linalg as LA
 import matplotlib.pyplot as plt
 from pynverse import inversefunc
 from datetime import datetime
+import time
 import matplotlib.pyplot as plt
 from scipy.interpolate import CubicSpline, make_interp_spline
 #from unique_names_generator import get_random_name
@@ -41,6 +42,25 @@ def main():
     )
     print("Device: ", device)
 
+    # Get current date and time
+    current_time = datetime.now()
+
+    # Format the date and time as a string
+    folder_name = current_time.strftime("%Y-%m-%d_%H-%M-%S")
+
+    # Create the folder
+    try:
+        os.mkdir(folder_name)
+        print(f"Folder '{folder_name}' created successfully.")
+    except OSError as e:
+        print(f"Error: {e}")
+    
+    try:
+        os.chdir(folder_name)
+        print(f"Changed directory to '{folder_name}'.")
+    except OSError as e:
+        print(f"Error: {e}")
+
     def truncated_gaussian(mu, sigma, lower_bound, upper_bound, size=1):
         while True:
             sample = np.random.normal(mu, sigma, size)
@@ -54,7 +74,7 @@ def main():
     loc = 0  # Mean
     scale = 1  # Standard deviation
     a, b = (a_trunc - loc) / scale, (b_trunc - loc) / scale
-    t_eval = np.linspace(-10,20,100)
+    t_eval = np.linspace(-5,20,100)
     def build_toy_dataset(N, a, b, D=50, noise_std=0.1):
         # np.random.seed(1234)
         X = np.random.normal(0, 1, (N, D)) + 1
@@ -102,11 +122,11 @@ def main():
         return x - (1+np.exp(-x)) - y
     
     def F(u):
-        return truncnorm.cdf(u, a, b, loc=loc, scale=scale)
+        return norm.cdf(u, loc=loc, scale=scale)
 
     # Define the probability density function (PDF) of the truncated normal distribution
     def f_prime(u):
-        return truncnorm.pdf(u, a, b, loc=loc, scale=scale)
+        return norm.pdf(u, loc=loc, scale=scale)
     print("**** Load Model ****")
     model_cdf = models.CDFNet(D)
     # model_name1 = config["model"]["model_name1"]
@@ -142,7 +162,7 @@ def main():
     
     def logpi(tt, D_it, beta_t, mu0=0, vsigma=1):
         mu0 = np.zeros(D)
-        v2 = 0.5
+        v2 = 0.1
         x_t = np.array(D_it["X"])
         y_t = np.array(D_it["Y"])
         p_t = np.array(D_it["P"])
@@ -153,15 +173,18 @@ def main():
         # print("p_t", p_t)
         # print("pred", pred)
         inp = (p_t - pred).reshape(-1)
-        #print("input: ", inp)
+        # print("input: ", inp)
         output = model_cdf.mapping(torch.tensor(inp.astype('float32'))).detach().numpy()
-        F_t = 1 / (1 + np.exp(-2* (output - 1.5)))
+        F_t = 1 / (1 + np.exp(-2 * (output - 1.5)))
+        # clip F_t between epsilon and 1-epsilon
+        epsilon = 1e-7
+        F_t = np.clip(F_t, epsilon, 1-epsilon)
         f_t = np.exp(-model_cdf.forward(torch.tensor(inp.astype('float32'))).detach().numpy().squeeze())
         if len(x_t) == 1:
             F_t = np.array([F_t])
             f_t = np.array([f_t])
-        print("F_t: ", F_t)
-        print("f_t: ", f_t)
+        # print("F_t: ", F_t)
+        # print("f_t: ", f_t)
         loss = sum([ff/FF * (1-yy/(1-FF)) * xx for ff, FF, yy, xx in zip(f_t, F_t, y_t, x_t)]).reshape((D,1))
         print("loss:", loss)
         lpi = sum([yy * np.log(1-FF) + (1-yy) * np.log(FF) for yy, FF in zip(y_t, F_t)])
@@ -175,11 +198,11 @@ def main():
     #Initialize beta
     beta_t = np.random.normal(0, 0.1, (D,1))
     l_t = 0
-    l_ra = 200
+    l_ra = 500
     l_ta = 500
     alpha = 0.2
     step = 1
-    nSple = 10
+    nSple = 100
     eta = 0.01
     beta_list = []
     D_it = {"I":[], "X":[], "Y":[], "P":[]}
@@ -239,18 +262,17 @@ def main():
                 if len(D_or["P"]) > len_plo:   
                     P_or = np.array(D_or["P"])
                     X_or = np.array(D_or["X"])
-                    print(X_or)
                     #error_est = (P_or - X_or.dot(beta_t)).flatten()
-                    model_cdf = models.CDFNet(D)
-                    for name, param in model_cdf.named_parameters():
-                        print(name, param.size())
+                    #model_cdf = models.CDFNet(D)
+                    # for name, param in model_cdf.named_parameters():
+                    #     print(name, param.size())
                     #model_cdf.dudt[0].weight = nn.Parameter(torch.randn(D, 1))
                     # Fix the bias of the first layer P_t - W^T * X
                     with torch.no_grad():
                         model_cdf.first_layer.bias = nn.Parameter(torch.tensor(P_or,dtype=torch.float32)) 
                     model_cdf.optimise(torch.tensor(-X_or.astype('float32')),1500)
                     output = model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy()
-                    F_dist = 1 / (1 + np.exp(-2* (output - 1.5)))
+                    F_dist = 1 / (1 + np.exp(-2 * (output - 1.5)))
                     #F_dist = expit(model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
                     f_dist = np.exp(-model_cdf.forward(torch.tensor(t_eval.astype('float32'))).detach().numpy().squeeze())
                     fig, ax = plt.subplots()
@@ -262,9 +284,12 @@ def main():
                     plt.legend()
                     plt.title("Learning a MoG distribution (n=1000)")
                     plt.tight_layout()
-                    plt.show()
+                    plt.savefig(f'est_pdf_{len(D_or["P"])}.png')
+                    plt.close()
                     plt.plot(F_dist)
-                    plt.show()
+                    plt.savefig(f'est_cdf_{len(D_or["P"])}.png')
+                    plt.close()
+                    #plt.show()
                 #y = expit(cnet.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
                 # F_dist = expit(model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
                 # f_dist = np.exp(-model_cdf.forward(torch.tensor(t_eval.astype('float32'))).detach().numpy().squeeze())
@@ -289,7 +314,6 @@ def main():
                             beta_t = beta_prop
                             lpi = lpiprop
                             loss = lossprop
-                        print(beta_t)
                         beta_list.append(beta_t)
                 step+=1
 
@@ -325,7 +349,7 @@ def main():
                 # plt.legend()
                 # plt.show()
 
-                P_t = u_t + spline_interpolation(-u_t)
+                P_t = np.array(min(max([0], u_t + spline_interpolation(-u_t)), [B]))
                 print("P_t: ", P_t)
                 Y_t = int((V_t >= P_t)[0])
                 D_it["X"].append(X_t)
@@ -337,8 +361,8 @@ def main():
             u_star = X_t.dot(W).squeeze()
             
             P_star = u_star+invfunc(-u_star)
-            
-            P_random = np.random.uniform(0, 2*B, 1)
+            print("P_star: ", P_star)
+            P_random = np.random.uniform(0, B, 1)
             # Calculate regret
             regret_plcy = P_star * int((V_t >= P_star)[0]) - P_t * Y_t
             cum_regret_plcy += regret_plcy
@@ -370,13 +394,15 @@ def main():
         ## update episode
     plt.plot(cum_regret_plcy_list)
     plt.plot(cum_regret_random_list)
+    plt.legend(['plcy', 'random'])
+    plt.savefig('regret.png')
     plt.show()
     fig, ax = plt.subplots()
-    ax.hist(error_est, density=True, bins=50, alpha=0.6)
+    #ax.hist(error_est, density=True, bins=50, alpha=0.6)
     ax.plot(t_eval, f_dist, '-r', label='DeCDF')
     plt.xlabel('x')
     plt.ylabel('p(x)')
-    plt.legend()
+    
     plt.title("Learning a MoG distribution (n=1000)")
     plt.tight_layout()
     plt.show()    
