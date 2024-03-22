@@ -310,7 +310,7 @@ class LogisticNet(nn.Module):
 class CDFNet(nn.Module):
     """Solve conditional ODE. Single output dim."""
     def __init__(self, D, hidden_dim=32, output_dim=1, device="cpu",
-                 nonlinearity=nn.Tanh, n=10, lr=1e-3):
+                 nonlinearity=nn.Tanh, n=15, lr=1e-3):
         super().__init__()
         
         self.output_dim = output_dim
@@ -377,7 +377,6 @@ class CDFNet(nn.Module):
         return self.forward(t).sum()
     
     def optimise(self, t, niters):
-        print("X shape:", t.shape)
         for i in range(niters):
             self.optimizer.zero_grad()
             t2 = self.first_layer(t)
