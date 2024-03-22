@@ -50,7 +50,7 @@ def main():
 
     # Create the folder
     try:
-        os.mkdir(folder_name)
+        os.mkdir('result/' + folder_name)
         print(f"Folder '{folder_name}' created successfully.")
     except OSError as e:
         print(f"Error: {e}")
