@@ -343,14 +343,17 @@ class CDFNet(nn.Module):
         self.subNet = LogisticNet()
         
     def mapping(self, t):
-        t = t[:, None]
-        a = -10
-        b = t
+        t = t[:,None]
+        a = 0
+        b = t 
         tau = torch.matmul((b - a)/2, self.u_n) + (b+a)/2 # N x n
         tau_ = torch.flatten(tau)[:,None] # Nn x 1. Think of as N n-dim vectors stacked on top of each other
         f_n = self.dudt(tau_).reshape((*tau.shape, self.output_dim)) # N x n x d_out
-        pred = (b-a)/2 * ((self.w_n[:,:,None] * f_n).sum(dim=1))
-        #return torch.tanh(pred).squeeze()
+        sign_fn = torch.sign(tau).reshape(*tau.shape, self.output_dim)
+        sign_fn[sign_fn == 0] = 1
+        #print(sign_fn)
+        #f_n = f_n * sign_fn
+        pred = (b - a)/2 * ((self.w_n[:,:,None] * f_n).sum(dim=1)) # 
         return pred.squeeze()
     
     # def mapping_prime(self, t):
@@ -370,7 +373,7 @@ class CDFNet(nn.Module):
         F = self.mapping(t)
         du = self.dudt(t[:,None]).squeeze()
         #return -(torch.log(du) + torch.log(1-F**2))
-        return -(torch.log(du) + torch.log(torch.tensor([2])) + F - 2*torch.log(1+torch.exp(F)))
+        return -(torch.log(du) + F - 2*torch.log(1+torch.exp(F)))
         #return -(torch.log(du) + F - 2*torch.log(1+torch.exp(F)))
     
     def sum_forward(self, t):
