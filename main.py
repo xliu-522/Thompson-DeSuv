@@ -56,7 +56,7 @@ def main():
         print(f"Error: {e}")
     
     try:
-        os.chdir(folder_name)
+        os.chdir('result/' + folder_name)
         print(f"Changed directory to '{folder_name}'.")
     except OSError as e:
         print(f"Error: {e}")
@@ -74,7 +74,7 @@ def main():
     loc = 0  # Mean
     scale = 1  # Standard deviation
     a, b = (a_trunc - loc) / scale, (b_trunc - loc) / scale
-    t_eval = np.linspace(-5,20,100)
+    t_eval = np.linspace(-10,10,100)
     def build_toy_dataset(N, a, b, D=50, noise_std=0.1):
         # np.random.seed(1234)
         X = np.random.normal(0, 1, (N, D)) + 1
@@ -175,7 +175,8 @@ def main():
         inp = (p_t - pred).reshape(-1)
         # print("input: ", inp)
         output = model_cdf.mapping(torch.tensor(inp.astype('float32'))).detach().numpy()
-        F_t = 1 / (1 + np.exp(-2 * (output - 1.5)))
+        #F_t = 1 / (1 + np.exp(-2 * (output - 1.5)))
+        F_t = expit(output)
         # clip F_t between epsilon and 1-epsilon
         epsilon = 1e-7
         F_t = np.clip(F_t, epsilon, 1-epsilon)
@@ -263,7 +264,7 @@ def main():
                     P_or = np.array(D_or["P"])
                     X_or = np.array(D_or["X"])
                     #error_est = (P_or - X_or.dot(beta_t)).flatten()
-                    #model_cdf = models.CDFNet(D)
+                    model_cdf = models.CDFNet(D)
                     # for name, param in model_cdf.named_parameters():
                     #     print(name, param.size())
                     #model_cdf.dudt[0].weight = nn.Parameter(torch.randn(D, 1))
@@ -271,13 +272,14 @@ def main():
                     with torch.no_grad():
                         model_cdf.first_layer.bias = nn.Parameter(torch.tensor(P_or,dtype=torch.float32)) 
                     model_cdf.optimise(torch.tensor(-X_or.astype('float32')),1500)
-                    output = model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy()
-                    F_dist = 1 / (1 + np.exp(-2 * (output - 1.5)))
-                    #F_dist = expit(model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
+                    #output = model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy()
+                    #F_dist = 1 / (1 + np.exp(-2 * (output - 1.5)))
+                    F_dist = expit(model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
                     f_dist = np.exp(-model_cdf.forward(torch.tensor(t_eval.astype('float32'))).detach().numpy().squeeze())
                     fig, ax = plt.subplots()
                     beta_trained = np.transpose(model_cdf.first_layer.weight.detach().numpy())
                     ax.hist(P_or - X_or.dot(beta_trained), density=True, bins=50, alpha=0.6)
+                    ax.hist(xi, density=True, bins=50, alpha=0.6)
                     ax.plot(t_eval, f_dist, '-r', label='DeCDF')
                     plt.xlabel('x')
                     plt.ylabel('p(x)')
@@ -286,7 +288,7 @@ def main():
                     plt.tight_layout()
                     plt.savefig(f'est_pdf_{len(D_or["P"])}.png')
                     plt.close()
-                    plt.plot(F_dist)
+                    plt.plot(np.linspace(-10,10,100), F_dist)
                     plt.savefig(f'est_cdf_{len(D_or["P"])}.png')
                     plt.close()
                     #plt.show()
