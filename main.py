@@ -128,7 +128,9 @@ def main():
     def f_prime(u):
         return norm.pdf(u, loc=loc, scale=scale)
     print("**** Load Model ****")
-    model_cdf = models.CDFNet(D)
+    D_it = {"I":[], "X":[], "Y":[], "P":[]}
+    D_or = {"X":[], "Y":[], "P":[]}
+    model_cdf = models.CDFNet(D, D_or)
     # model_name1 = config["model"]["model_name1"]
     # model_name2 = config["model"]["model_name2"]
     # model_reference1 = getattr(models, model_name1)
@@ -200,14 +202,12 @@ def main():
     beta_t = np.random.normal(0, 0.1, (D,1))
     l_t = 0
     l_ra = 500
-    l_ta = 500
     alpha = 0.2
     step = 1
     nSple = 100
     eta = 0.01
     beta_list = []
-    D_it = {"I":[], "X":[], "Y":[], "P":[]}
-    D_or = {"X":[], "Y":[], "P":[]}
+    
     cum_regret_plcy = 0
     cum_regret_random = 0
     # Generate D_0 dataset 
@@ -233,6 +233,9 @@ def main():
             D_or["X"].append(X_t)
             D_or["Y"].append(Y_t)
             D_or["P"].append(P_t)
+            D_it["X"].append(X_t)
+            D_it["Y"].append(Y_t)
+            D_it["P"].append(P_t)
             len_plo = len(D_or["P"])
             
     # After the exploration period, explore with probability alpha 
@@ -246,17 +249,10 @@ def main():
                 D_or["X"].append(X_t)
                 D_or["Y"].append(Y_t)
                 D_or["P"].append(P_t)
-                
-                    # Exploration phase
-                    #X_b = x_t.dot(beta_t).squeeze()
-                    
-                    #error_est = P_exp - X_b
-                    # plt.hist(error_est)
-                    # plt.show()
-                # X_exp = X[l_t:l_t+l_ra]
-                # V_exp = V[l_t:l_t+l_ra]
-                # Offer price p_t ~ N(X^Tb,1)
-                #X_b = model_logistic(torch.tensor(X_exp.astype('float32'))).detach().numpy().squeeze()
+                D_it["X"].append(X_t)
+                D_it["Y"].append(Y_t)
+                D_it["P"].append(P_t)
+
 
             else:
                 # Approximate noise distribution using exploration dataset
@@ -264,13 +260,12 @@ def main():
                     P_or = np.array(D_or["P"])
                     X_or = np.array(D_or["X"])
                     #error_est = (P_or - X_or.dot(beta_t)).flatten()
-                    model_cdf = models.CDFNet(D)
+                    model_cdf = models.CDFNet(D, D_or)
                     # for name, param in model_cdf.named_parameters():
                     #     print(name, param.size())
-                    #model_cdf.dudt[0].weight = nn.Parameter(torch.randn(D, 1))
                     # Fix the bias of the first layer P_t - W^T * X
                     with torch.no_grad():
-                        model_cdf.first_layer.bias = nn.Parameter(torch.tensor(P_or,dtype=torch.float32)) 
+                        model_cdf.first_layer.bias = nn.Parameter(torch.tensor(P_or, dtype=torch.float32)) 
                     model_cdf.optimise(torch.tensor(-X_or.astype('float32')),1500)
                     #output = model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy()
                     #F_dist = 1 / (1 + np.exp(-2 * (output - 1.5)))
@@ -279,7 +274,7 @@ def main():
                     fig, ax = plt.subplots()
                     beta_trained = np.transpose(model_cdf.first_layer.weight.detach().numpy())
                     ax.hist(P_or - X_or.dot(beta_trained), density=True, bins=50, alpha=0.6)
-                    ax.hist(xi, density=True, bins=50, alpha=0.6)
+                    #ax.hist(xi, density=True, bins=50, alpha=0.6)
                     ax.plot(t_eval, f_dist, '-r', label='DeCDF')
                     plt.xlabel('x')
                     plt.ylabel('p(x)')
@@ -288,9 +283,9 @@ def main():
                     plt.tight_layout()
                     plt.savefig(f'est_pdf_{len(D_or["P"])}.png')
                     plt.close()
-                    plt.plot(np.linspace(-10,10,100), F_dist)
-                    plt.savefig(f'est_cdf_{len(D_or["P"])}.png')
-                    plt.close()
+                    # plt.plot(np.linspace(-10,10,100), F_dist)
+                    # plt.savefig(f'est_cdf_{len(D_or["P"])}.png')
+                    # plt.close()
                     #plt.show()
                 #y = expit(cnet.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
                 # F_dist = expit(model_cdf.mapping(torch.tensor(t_eval.astype('float32'))).detach().numpy())
@@ -328,9 +323,12 @@ def main():
                     solution = float(fsolve(equation_to_solve, x0=0, args=(phi,)))
                     t_values.append(solution)
                 t_values = np.array(t_values)
-                g_w = model_cdf.dudt(torch.tensor(t_values.astype('float32'))[:,None]).squeeze().detach().numpy()
-                F0_ut = model_cdf.mapping(torch.tensor(t_values.astype('float32'))).detach().numpy()
-                phi_values = t_values - (1+np.exp(-F0_ut))/g_w
+                # g_w = model_cdf.dudt(torch.tensor(t_values.astype('float32'))[:,None]).squeeze().detach().numpy()
+                # F0_ut = model_cdf.mapping(torch.tensor(t_values.astype('float32'))).detach().numpy()
+                # phi_values = t_values - (1+np.exp(-F0_ut))/g_w
+                F_phi = expit(model_cdf.mapping(torch.tensor(t_values.astype('float32'))).detach().numpy())
+                f_phi = np.exp(-model_cdf.forward(torch.tensor(t_values.astype('float32'))).detach().numpy().squeeze())
+                phi_values = t_values - (1 - F_phi)/f_phi
                 # Generate some example data
                 sorted_indices = np.argsort(phi_values)
                 phi_sorted = phi_values[sorted_indices]
@@ -351,12 +349,36 @@ def main():
                 # plt.legend()
                 # plt.show()
 
+                # check if find the correct inverse
+                # print("phi:", u_t)
+                # phi_inv = spline_interpolation(u_t)
+                # print("phi_inv: ", phi_inv)
+                # F_phi = expit(model_cdf.mapping(torch.tensor(phi_inv.astype('float32'))).detach().numpy())
+                # f_phi = np.exp(-model_cdf.forward(torch.tensor(phi_inv.astype('float32'))).detach().numpy().squeeze())
+                # phi_est = phi_inv - (1-F_phi)/f_phi
+                # print("phi_est:", phi_est)
+
                 P_t = np.array(min(max([0], u_t + spline_interpolation(-u_t)), [B]))
                 print("P_t: ", P_t)
                 Y_t = int((V_t >= P_t)[0])
                 D_it["X"].append(X_t)
                 D_it["Y"].append(Y_t)
                 D_it["P"].append(P_t)
+
+                fig, ax = plt.subplots()
+                P_it = np.array(D_it["P"])
+                X_it = np.array(D_it["X"])
+                ax.hist(P_it - X_it.dot(beta_t), density=True, bins=50, alpha=0.6)
+                ax.hist(xi, density=True, bins=50, alpha=0.6)
+                #ax.plot(t_eval, f_dist, '-r', label='DeCDF')
+                plt.xlabel('x')
+                plt.ylabel('p(x)')
+                plt.legend()
+                plt.title("Learning a MoG distribution (n=1000)")
+                plt.tight_layout()
+                plt.savefig(f'est_pdf_{len(D_or["P"])}_2.png')
+                plt.close()
+
                 len_plo = len(D_or["P"])
 
             # Calculate oracle price using beta_* and F_*
