@@ -309,11 +309,12 @@ class LogisticNet(nn.Module):
 
 class CDFNet(nn.Module):
     """Solve conditional ODE. Single output dim."""
-    def __init__(self, D, hidden_dim=32, output_dim=1, device="cpu",
-                 nonlinearity=nn.Tanh, n=15, lr=1e-3):
+    def __init__(self, D, D_or, hidden_dim=32, output_dim=1, device="cpu",
+                 nonlinearity=nn.Tanh, n=15, lr=1e-4):
         super().__init__()
         
         self.output_dim = output_dim
+        self.D_or = D_or
 
         if device == "gpu":
             self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -377,7 +378,11 @@ class CDFNet(nn.Module):
         #return -(torch.log(du) + F - 2*torch.log(1+torch.exp(F)))
     
     def sum_forward(self, t):
-        return self.forward(t).sum()
+        Y = torch.tensor(self.D_or["Y"])
+        F = self.mapping(t)
+        Pi_or = -(Y * torch.log(1-torch.sigmoid(F)) + (1-Y)*torch.log(torch.sigmoid(F))).sum()
+        return Pi_or
+        #return self.forward(t).sum()
     
     def optimise(self, t, niters):
         for i in range(niters):
