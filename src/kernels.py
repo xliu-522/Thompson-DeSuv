@@ -1,7 +1,7 @@
 import numpy as np
 import math
 
-b_ra = 0.8
+b_ra = 0.6
 I_k = 200
 
 def kernel_2(u):
