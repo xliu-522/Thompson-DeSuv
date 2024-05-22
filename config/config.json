@@ -1,13 +1,12 @@
 {
     "data": {
         "data_path": "./data",
-        "dataset_option": ["cifar10", "fashionmnist"],
-        "dataset": "cifar10",
-        "batch_size": 128,
-        "num_channels": 3,
-        "train_test_split_perc": 0.8,
-        "sample_size": 2000,
-        "dimension": 10
+        "sample_size": 1000,
+        "dimension": 10,
+        "X_dist_options": ["Gaussian", "truncated"],
+        "X_dist": "truncated",
+        "noise_dist_options": ["Gaussian", "truncated"],
+        "noise_dist": "Gaussian"
         },
     "sampler": {
         "sampler_options": ["sasgld", "sacsgld", "sgld", "csgld"],

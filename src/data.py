@@ -1,38 +1,85 @@
 import os
 import pandas as pd
 import torch
-from torch.utils.data import DataLoader
-from torchvision import datasets
-from torchvision.transforms import ToTensor
-from torchvision import transforms
-from types import SimpleNamespace
+import numpy as np
+from scipy.special import expit
+from scipy.stats import truncnorm, norm  
+# from torch.utils.data import DataLoader
+# from torchvision import datasets
+# from torchvision.transforms import ToTensor
+# from torchvision import transforms
+# from types import SimpleNamespace
 
 class Data(object):
     def __init__(self, config):
+        self.D = config['data']['dimension']
+        self.N = config['data']['sample_size']
         self.data_path = config['data']['data_path']
-        self.batch_size =config['data']['batch_size']
-        self.image_size = config['data']['image_size']
-        self.model_name = config['model']['model_name']
+        self.X_dist = config['data']['X_dist']
+        self.xi_dist = config['data']['noise_dist']
+        self.scale_xi = 0.5
+        self.loc_xi = 0
+
+    def sample_x_density_trunc(self):
+        samples = []
+        while len(samples) < self.D:
+            # Sample a value from a uniform distribution between -sqrt(2/3) and sqrt(2/3)
+            x = np.random.uniform(-np.sqrt(2/3), np.sqrt(2/3))
+            # Calculate the value of the density function at x
+            density_value = (2/3 - x**2)**3
+            # Generate a uniform random number between 0 and 1
+            u = np.random.uniform(0, 1)
+            # If the density_value is greater than u, accept the sample
+            if density_value > u:
+                samples.append(x)
+        return np.array(samples)
+    
+    def sample_xi_truncated_distribution(self):
+        samples = []
+        while len(samples) < self.N:
+            # Sample a value from a uniform distribution between -0.5 and 0.5
+            xi = np.random.uniform(-0.5, 0.5)
+            # Calculate the value of the density function at x
+            density_value = (1/4 - xi**2)
+            # Generate a uniform random number between 0 and 1
+            u = np.random.uniform(0, 1)
+            # If the density_value is greater than u, accept the sample
+            if density_value > u:
+                samples.append(xi)
+        return np.array(samples).reshape((self.N, 1))
+    
+    def xi_truncated_pdf(self, val):
+        return np.where(np.abs(val) <= 1/2, (1/4 - val**2)) 
+
+    
+    def truncated_gaussian(self, mu, sigma, lower_bound, upper_bound, size=1):
+        while True:
+            sample = np.random.normal(mu, sigma, size)
+            if np.all((sample >= lower_bound) & (sample <= upper_bound)):
+                return sample
 
     def read(self):
-        resize_transform = transforms.Resize(size=(self.image_size,self.image_size),antialias=True)
-        train_dataset = datasets.CIFAR10(root=self.data_path, train=True, download=True)
-        self.data_mean = (train_dataset.data / 255.0).mean(axis=(0,1,2))
-        self.data_std = (train_dataset.data / 255.0).std(axis=(0,1,2))
-
-        if self.model_name == "AlexNet":
-            data_transform = transforms.Compose([transforms.ToTensor(), resize_transform,transforms.Normalize(self.data_mean, self.data_std)])
-        else:
-            data_transform = transforms.ToTensor()
+        if self.X_dist == 'truncated':
+            X = []
+            for ii in range(self.N):
+                x_ii = self.sample_x_density_trunc()
+                X.append(x_ii)
+            self.X = np.array(X)
             
-        # Loading the training dataset. 
-        self.train_dataset = datasets.CIFAR10(root=self.data_path, train=True, transform=data_transform , download=True)
+        elif self.X_dist == 'Gaussian':
+            self.X = np.random.normal(0, 1, (N, D))+1
+            
+        self.beta = np.random.normal(0, 0.5, (self.D,1))
         
-        # Loading the test set
-        self.test_dataset = datasets.CIFAR10(root=self.data_path, train=False, transform=data_transform , download=True)
+        if self.xi_dist == 'truncated':
+            self.xi = self.sample_xi_truncated_distribution()
+         
+        elif self.xi_dist == 'Gaussian':
+            self.xi = np.random.normal(0, self.scale_xi, (self.N, 1))
         
-
-        # We define a set of data loaders that we can use for various purposes later.
-        self.train_dataloader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, drop_last=True, pin_memory=True, num_workers=1)
-        self.test_dataloader = torch.utils.data.DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, drop_last=False, num_workers=1)
-        
+        self.V = self.X.dot(self.beta) + self.xi
+        self.y = expit(self.X.dot(self.beta)+self.xi)
+        #y = binom.rvs(1, y)  
+        self.y[self.y < 0.5] = 0
+        self.y[self.y >= 0.5] = 1  
+        self.y = self.y.flatten()

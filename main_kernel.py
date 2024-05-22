@@ -63,78 +63,13 @@ def main():
     except OSError as e:
         print(f"Error: {e}")
 
-    def truncated_gaussian(mu, sigma, lower_bound, upper_bound, size=1):
-        while True:
-            sample = np.random.normal(mu, sigma, size)
-            if np.all((sample >= lower_bound) & (sample <= upper_bound)):
-                return sample
+    
 
     print("**** Simulate data ****")
-
-    a_trunc = -0.5  # Lower bound
-    b_trunc = 0.5 # Upper bound
-    x_trunc = math.sqrt(2/3)
-    loc_xi = 0  # Mean
-    scale_xi = 0.5  # Standard deviation
-    a, b = (a_trunc - loc_xi) / scale_xi, (b_trunc - loc_xi) / scale_xi
-    t_eval = np.linspace(-10,10,100)
-    def sample_x_density(D):
-        samples = []
-        while len(samples) < D:
-            # Sample a value from a uniform distribution between -sqrt(2/3) and sqrt(2/3)
-            x = np.random.uniform(-np.sqrt(2/3), np.sqrt(2/3))
-            # Calculate the value of the density function at x
-            density_value = (2/3 - x**2)**3
-            # Generate a uniform random number between 0 and 1
-            u = np.random.uniform(0, 1)
-            # If the density_value is greater than u, accept the sample
-            if density_value > u:
-                samples.append(x)
-        return np.array(samples)
-    
-    def sample_xi_distribution(num_samples):
-        samples = []
-        while len(samples) < num_samples:
-            # Sample a value from a uniform distribution between -0.5 and 0.5
-            x = np.random.uniform(-0.5, 0.5)
-            # Calculate the value of the density function at x
-            density_value = (1/4 - x**2)
-            # Generate a uniform random number between 0 and 1
-            u = np.random.uniform(0, 1)
-            # If the density_value is greater than u, accept the sample
-            if density_value > u:
-                samples.append(x)
-        return np.array(samples).reshape((num_samples, 1))
-    
-    def build_toy_dataset(N, a, b, D=50, noise_std=0.1):
-        # np.random.seed(1234)
-        #X = np.random.normal(0, 1, (N, D))
-        #W = np.random.random((D, 1))
-        # X = np.random.normal(0, 1, (N, D))+1
-        X = []
-        for ii in range(N):
-            x_ii = sample_x_density(D)
-            X.append(x_ii)
-        X = np.array(X)
-        # X = np.array([truncnorm.rvs(-x_trunc, x_trunc, size = D) for _ in range(N)])
-        W = np.ones((D, 1)) * math.sqrt(2/3)
-        #xi = np.array([truncnorm.rvs(a, b, size=1) for _ in range(N)])
-        #xi = sample_xi_distribution(N)
-        xi = np.random.normal(0, scale_xi, (N, 1))
-        # zero_ind = np.arange(D//4, D)
-        # W[zero_ind, :] = 0
-        V = X.dot(W) + xi
-        y = expit(X.dot(W)+xi)
-        #y = binom.rvs(1, y)  
-        y[y < 0.5] = 0
-        y[y >= 0.5] = 1  
-        y = y.flatten()
-        # X = torch.tensor(X, dtype=torch.float32)
-        # V = torch.tensor(X, dtype=torch.float32)
-        return X, y, W, V, xi
-    
     N, D = config["data"]["sample_size"], config["data"]["dimension"]
-    X, y, W, V, xi = build_toy_dataset(N, a, b, D)
+    data_obj = Data(config)
+    data_obj.read()
+    X, y, W, V, xi = data_obj.X_dist
     print("**** Fit spline interpolation ****")
 
     # X = torch.tensor(X.astype('float32')).to(device)
@@ -163,7 +98,7 @@ def main():
     l_ra = 200 # length of the exploration phase
     m = 2 #the order of the kernel function
     I_k = min((D * l_ra)**((2*m+1)/(4*m-1)), l_ra)
-    b_ra = 3 * (1/I_k**(1/(2*m+1)))
+    b_ra = 3.5 * (1/I_k**(1/(2*m+1)))
     print("I_k: ", I_k)
     print("b_ra: ", b_ra)
 
@@ -205,6 +140,9 @@ def main():
     def phi_func_est(u, w_t, y_t, phi_t):
         return u - (1-F_hat(u, w_t, y_t))/d_F_hat(u, w_t, y_t) + phi_t
     
+    # def phi_func_est(u, phi_t):
+    #     return u - (1-F(u))/f_prime(u) + phi_t
+    
     def kernel_function(x, xi, h):
         # Gaussian kernel function
         return np.exp(-0.5 * ((x - xi) / h)**2) / (np.sqrt(2 * np.pi) * h)
@@ -225,6 +163,8 @@ def main():
         w_t = (p_or - x_or.dot(beta_or)).flatten()
         F_t = F_hat(u_it, w_t, y_or) 
         f_t = d_F_hat(u_it, w_t, y_or)
+        # F_t = F(u_it)
+        # f_t = f_prime(u_it)
         # print("F_t:", len(F_t))
         # print("f_t: ", len(f_t))
         loss = sum([ff/FF * (1-yy/(1-FF)) * xx for ff, FF, yy, xx in zip(f_t, F_t, y_it, x_it)]).reshape((D,1))
@@ -239,10 +179,10 @@ def main():
     
     #Initialize beta
     beta_t = np.random.normal(0, 0.1, (D,1))
-    alpha = 0.2
+    alpha = 0.1
     step = 1
-    nSple = 10
-    eta = 0.1
+    nSple = 20
+    eta0 = 0.5
     beta_list = []
     D_it = {"I":[], "X":[], "Y":[], "P":[]}
     D_or = {"X":[], "Y":[], "P":[]}
@@ -287,6 +227,7 @@ def main():
             # Update estimate of Beta using exploitation dataset
             loss, lpi = logpi(tt, D_or, D_it, beta_or, beta_t)
             print(step)
+            eta = eta0/tt
             if step % 50 == 0:
                 for k in range(nSple):
                     epsilon = np.random.normal(size=(D,1))
@@ -298,7 +239,7 @@ def main():
                         beta_t = beta_prop
                         lpi = lpiprop
                         loss = lossprop
-                    beta_list.append(beta_t)
+                beta_list.append(beta_t)
             step+=1
             #print(beta_t)
             I_t = 1 if np.random.rand() <= alpha else 0
@@ -332,18 +273,21 @@ def main():
 
                 plt.legend(["Estimated pdf", "True pdf"])
                 plt.savefig(f'est_pdf_{len(D_or["P"])}.png')
-                #plt.show()
+                plt.show()
                 plt.close()
                 #plt.show()
                 # Approximate price
                 u_t = X_t.dot(beta_t)
                 phi_inv = [float(fsolve(phi_func_est, x0=0, args=(w_t, Y_or, u_t, )))]
+                # P_t = u_t + invfunc(-u_t)
+                # print(P_t)
                 phi_est = -(phi_inv - (1-F_hat(phi_inv, w_t, Y_or))/d_F_hat(phi_inv, w_t, Y_or))
                 print("phi_inv: ", phi_inv)
                 print("phi_t:", u_t)
                 print("phi_est:", phi_est)
 
                 P_t = np.array(min(max([0], u_t + phi_inv), [B]))
+                #P_t = np.array([min(max(0, P_t[0]), B)])
                 print("P_t: ", P_t)
                 Y_t = int((V_t >= P_t)[0])
 
@@ -367,19 +311,19 @@ def main():
                 
     
 
-        # Calculate oracle price using beta_* and F_*
-        u_star = X_t.dot(W).squeeze()
-        
-        P_star = u_star+invfunc(-u_star)
-        print("P_star: ", P_star)
-        P_random = np.random.uniform(0, B, 1)
-        # Calculate regret
-        regret_plcy = P_star * int((V_t >= P_star)[0]) - P_t * Y_t
-        cum_regret_plcy += regret_plcy
-        cum_regret_plcy_list.append(cum_regret_plcy[0])
-        regret_random = P_star * int((V_t >= P_star)[0]) - P_random * int((V_t >= P_random)[0])
-        cum_regret_random += regret_random
-        cum_regret_random_list.append(cum_regret_random[0])
+            # Calculate oracle price using beta_* and F_*
+            u_star = X_t.dot(W).squeeze()
+
+            P_star = u_star+invfunc(-u_star)
+            print("P_star: ", P_star)
+            P_random = np.random.uniform(0, B, 1)
+            # Calculate regret
+            regret_plcy = P_star * int((V_t >= P_star)[0]) - P_t * Y_t
+            cum_regret_plcy += regret_plcy
+            cum_regret_plcy_list.append(cum_regret_plcy[0])
+            regret_random = P_star * int((V_t >= P_star)[0]) - P_random * int((V_t >= P_random)[0])
+            cum_regret_random += regret_random
+            cum_regret_random_list.append(cum_regret_random[0])
         
     plt.plot(cum_regret_plcy_list)
     plt.plot(cum_regret_random_list)

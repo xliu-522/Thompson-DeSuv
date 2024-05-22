@@ -1,31 +1,32 @@
 {
     "data": {
         "data_path": "./data",
-        "dataset_option": ["cifar10", "fashionmnist"],
-        "dataset": "cifar10",
-        "batch_size": 128,
-        "num_channels": 3,
-        "train_test_split_perc": 0.8,
-        "image_size": 32
+        "sample_size": 1500,
+        "dimension": 10,
+        "X_dist_options": ["Gaussian", "truncated"],
+        "X_dist": "truncated",
+        "noise_dist_options": ["Gaussian", "truncated"],
+        "noise_dist": "Gaussian"
         },
     "sampler": {
         "sampler_options": ["sasgld", "sacsgld", "sgld", "csgld"],
-        "sampler": "sacsgld",
-        "sparse": true,
+        "sampler": "sasgld",
         "update_rate": 0.001,
         "rho_0": 10000,
         "rho_1": 1,
         "u": 50
     },
     "model": {
-        "model_options": ["LeNet5", "AlexNet", "VGG6"],
-        "model_name": "VGG6"
+        "model_options": ["LeNet5", "AlexNet", "VGG6", "ResNet18", "GoogLeNet", "CDFNet", "LogisticNet"],
+        "model_name1": "LogisticNet",
+        "model_name2": "CDFNet"
     }, 
     "training":{
-        "epoches": 500,
-        "numIter": 100000,
-        "cycles": 10,
-        "gamma": 8e-6,
-        "threshold": 1e-7
+        "epoches": 10,
+        "numIter": 10000,
+        "cycles": 6,
+        "gamma": 5e-6,
+        "alpha_0": 0.5,
+        "threshold": 0.001
     }
 }
