@@ -149,7 +149,7 @@ def main():
             plt.plot(t_val, f_hat, label="True pdf")
             plt.legend()
             plt.savefig(f'est_pdf_{len(Dataset["P"])}.png')
-            plt.show()
+            #plt.show()
             plt.close()
 
         # propose price 
