@@ -17,7 +17,7 @@ class Data(object):
         self.data_path = config['data']['data_path']
         self.X_dist = config['data']['X_dist']
         self.xi_dist = config['data']['noise_dist']
-        self.scale_xi = 0.5
+        self.scale_xi = 0.3
         self.loc_xi = 0
 
     def sample_x_density_trunc(self):
@@ -75,7 +75,7 @@ class Data(object):
             self.xi = self.sample_xi_truncated_distribution()
          
         elif self.xi_dist == 'Gaussian':
-            self.xi = np.random.normal(0, self.scale_xi, (self.N, 1))
+            self.xi = np.random.normal(self.loc_xi, self.scale_xi, (self.N, 1))
         
         self.V = self.X.dot(self.beta) + self.xi
         self.y = expit(self.X.dot(self.beta)+self.xi)

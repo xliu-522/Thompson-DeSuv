@@ -1,7 +1,7 @@
 {
     "data": {
         "data_path": "./data",
-        "sample_size": 1000,
+        "sample_size": 300,
         "dimension": 10,
         "X_dist_options": ["Gaussian", "truncated"],
         "X_dist": "truncated",
@@ -21,6 +21,12 @@
         "model_name1": "LogisticNet",
         "model_name2": "CDFNet"
     }, 
+
+    "kernel": {
+        "bw": 0.8,
+        "I_k": 200,
+        "order": 2
+    },
     "training":{
         "epoches": 10,
         "numIter": 10000,

@@ -12,7 +12,6 @@ from src.data import Data
 from src.train import mcmc_train_test
 import src.kernels
 import models
-import src.kernels
 import numpy as np
 import random
 from numpy import linalg as LA
@@ -138,24 +137,32 @@ def main():
         #Use collected beta to re-estimate CDF using kernel
         Y_arr = np.array(Dataset["Y"])
         w_t = (P_arr - X_arr.dot(beta_trained)).flatten()
-        t_val = np.linspace(-2, 2, 100)
+        t_val = np.linspace(-1, 1, 100)
         f_hat = src.kernels.d_F_est(t_val, w_t, Y_arr)
         F_hat = src.kernels.F_est(t_val, w_t, Y_arr)
+        # f_hat = xi_pdf(t_val)
+        # F_hat = xi_cdf(t_val)
+        
 
         # Plot the noise distribution
-        if tt % 50 == 0:
+        if tt % 10 == 0:
             sample_xi = xi_pdf(t_val)
             plt.plot(t_val, sample_xi, label ="Estimated pdf")
             plt.plot(t_val, f_hat, label="True pdf")
             plt.legend()
             plt.savefig(f'est_pdf_{len(Dataset["P"])}.png')
-            #plt.show()
+            plt.show()
+            plt.close()
+            plt.plot(t_val, F_hat)
+            plt.savefig(f'est_cdf_{len(Dataset["P"])}.png')
             plt.close()
 
         # propose price 
         u_t = X_t.dot(beta_trained)
         phi_inv = [float(fsolve(src.kernels.phi_func_est, x0=0, args=(w_t, Y_arr, u_t, )))]
         phi_est = -(phi_inv - (1-src.kernels.F_est(phi_inv, w_t, Y_arr))/src.kernels.d_F_est(phi_inv, w_t, Y_arr))
+        # phi_inv = [float(fsolve(src.kernels.phi_func_known, x0=0, args=(u_t, )))]
+        # phi_est = -(phi_inv - (1-xi_cdf(phi_inv))/xi_pdf(phi_inv)) 
         print("phi_inv: ", phi_inv)
         print("phi_t:", u_t)
         print("phi_est:", phi_est)
@@ -183,9 +190,11 @@ def main():
         cum_regret_random_list.append(cum_regret_random[0])
     plt.plot(cum_regret_plcy_list)
     plt.plot(cum_regret_random_list)
+    
     plt.legend(['plcy', 'random'])
     plt.savefig('regret.png')
     plt.show()
-
+    np.save('plcy_output.npy', cum_regret_plcy_list)
+    np.save('random_output.npy', cum_regret_random_list)
 if __name__ == "__main__":
     main()
